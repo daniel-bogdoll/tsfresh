@@ -1,8 +1,7 @@
 import math
 import subprocess
 import sys
-from unittest import TestCase
-from unittest import skipUnless
+from unittest import TestCase, skipUnless
 from unittest.mock import Mock
 
 import numpy as np
@@ -12,10 +11,10 @@ from dask import dataframe as dd
 from tests.fixtures import DataTestCase
 from tsfresh.feature_extraction.data import (
     LongTsFrameAdapter,
+    PartitionedTsData,
     PolarsLongTsFrameAdapter,
     PolarsTsDictAdapter,
     PolarsWideTsFrameAdapter,
-    PartitionedTsData,
     TsDictAdapter,
     WideTsFrameAdapter,
     to_tsdata,
@@ -573,7 +572,10 @@ class PolarsDataAdapterTestCase(DataTestCase):
 
     def test_polars_dict_dispatch(self):
         test_df = pl.DataFrame(
-            [{"value": 1, "sort": 1, "id": "id_1"}, {"value": 2, "sort": 2, "id": "id_1"}]
+            [
+                {"value": 1, "sort": 1, "id": "id_1"},
+                {"value": 2, "sort": 2, "id": "id_1"},
+            ]
         )
         data = to_tsdata(
             {"a": test_df, "b": test_df},
@@ -614,9 +616,7 @@ class PolarsDataAdapterTestCase(DataTestCase):
 
     def test_nan_validation_for_polars(self):
         test_df = pl.DataFrame({"id": [1], "kind": ["a"], "value": [float("nan")]})
-        self.assertRaises(
-            ValueError, to_tsdata, test_df, "id", "kind", "value", None
-        )
+        self.assertRaises(ValueError, to_tsdata, test_df, "id", "kind", "value", None)
 
     def test_inf_parity_with_pandas(self):
         pandas_df = pd.DataFrame({"id": [1, 1], "value": [1.0, np.inf]})

@@ -46,6 +46,19 @@ def _sorted_group_items(groups):
         return group_items
 
 
+def _with_row_index(df, row_number_column):
+    if hasattr(df, "with_row_index"):
+        return df.with_row_index(row_number_column)
+    return df.with_row_count(row_number_column)
+
+
+def _polars_id_type(df, column_id):
+    id_values = df.get_column(column_id).head(1).to_list()
+    if not id_values:
+        return object
+    return type(id_values[0])
+
+
 def _binding_helper(f, kwargs, column_sort, column_id, column_kind, column_value):
     def wrapped_feature_extraction(x):
         # Capture group identity BEFORE sort_values(), because sort_values()
@@ -393,11 +406,12 @@ class PolarsWideTsFrameAdapter(PartitionedTsData):
         self.value_columns = value_columns
         self.column_sort = column_sort
         self.row_number_column = "_tsfresh_row_number"
-        self.df_grouped = df.with_row_count(self.row_number_column).partition_by(
+        self.df_grouped = _with_row_index(df, self.row_number_column).partition_by(
             column_id, maintain_order=True, as_dict=True
         )
 
         super().__init__(df, column_id)
+        self.df_id_type = _polars_id_type(df, column_id)
 
     def __len__(self):
         return len(self.df_grouped) * len(self.value_columns)
@@ -449,11 +463,12 @@ class PolarsLongTsFrameAdapter(PartitionedTsData):
 
         self.column_sort = column_sort
         self.row_number_column = "_tsfresh_row_number"
-        self.df_grouped = df.with_row_count(self.row_number_column).partition_by(
+        self.df_grouped = _with_row_index(df, self.row_number_column).partition_by(
             [column_id, column_kind], maintain_order=True, as_dict=True
         )
 
         super().__init__(df, column_id)
+        self.df_id_type = _polars_id_type(df, column_id)
 
     def __len__(self):
         return len(self.df_grouped)
@@ -490,13 +505,15 @@ class PolarsTsDictAdapter(PartitionedTsData):
         self.column_sort = column_sort
         self.row_number_column = "_tsfresh_row_number"
         self.grouped_dict = {
-            key: df.with_row_count(self.row_number_column).partition_by(
+            key: _with_row_index(df, self.row_number_column).partition_by(
                 column_id, maintain_order=True, as_dict=True
             )
             for key, df in ts_dict.items()
         }
 
-        super().__init__(next(iter(ts_dict.values())), column_id)
+        first_df = next(iter(ts_dict.values()))
+        super().__init__(first_df, column_id)
+        self.df_id_type = _polars_id_type(first_df, column_id)
 
     def __iter__(self):
         for kind, grouped_df in self.grouped_dict.items():

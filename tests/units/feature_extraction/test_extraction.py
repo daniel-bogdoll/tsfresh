@@ -4,12 +4,12 @@
 
 import os
 import tempfile
+from unittest import skipUnless
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 from mock import Mock
-from unittest import skipUnless
-from unittest.mock import patch
 
 from tests.fixtures import DataTestCase
 from tsfresh.feature_extraction.extraction import extract_features
@@ -453,12 +453,20 @@ class PolarsExtractionParityTestCase(DataTestCase):
         self.fc_parameters = {"sum_values": None, "mean": None, "median": None}
 
     def _assert_pandas_polars_equal(self, pandas_df, polars_df, **kwargs):
-        pandas_features = extract_features(
-            pandas_df, default_fc_parameters=self.fc_parameters, **kwargs
-        ).sort_index(axis=0).sort_index(axis=1)
-        polars_features = extract_features(
-            polars_df, default_fc_parameters=self.fc_parameters, **kwargs
-        ).sort_index(axis=0).sort_index(axis=1)
+        pandas_features = (
+            extract_features(
+                pandas_df, default_fc_parameters=self.fc_parameters, **kwargs
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+        polars_features = (
+            extract_features(
+                polars_df, default_fc_parameters=self.fc_parameters, **kwargs
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
 
         self.assertIsInstance(polars_features, pd.DataFrame)
         self.assertEqual(list(pandas_features.index), list(polars_features.index))
@@ -482,7 +490,9 @@ class PolarsExtractionParityTestCase(DataTestCase):
             }
         )
         polars_df = pl.from_pandas(pandas_df)
-        self._assert_pandas_polars_equal(polars_df=polars_df, pandas_df=pandas_df, column_id="id", column_sort="time")
+        self._assert_pandas_polars_equal(
+            polars_df=polars_df, pandas_df=pandas_df, column_id="id", column_sort="time"
+        )
 
     def test_long_format_parity(self):
         pandas_df = pd.DataFrame(
@@ -529,25 +539,37 @@ class PolarsExtractionParityTestCase(DataTestCase):
 
     def test_dict_parity(self):
         pandas_dict = {
-            "a": pd.DataFrame({"id": [1, 1, 2], "time": [2, 1, 1], "value": [1.0, 2.0, 3.0]}),
-            "b": pd.DataFrame({"id": [1, 2, 2], "time": [1, 2, 1], "value": [4.0, 5.0, 6.0]}),
+            "a": pd.DataFrame(
+                {"id": [1, 1, 2], "time": [2, 1, 1], "value": [1.0, 2.0, 3.0]}
+            ),
+            "b": pd.DataFrame(
+                {"id": [1, 2, 2], "time": [1, 2, 1], "value": [4.0, 5.0, 6.0]}
+            ),
         }
         polars_dict = {kind: pl.from_pandas(df) for kind, df in pandas_dict.items()}
 
-        pandas_features = extract_features(
-            pandas_dict,
-            default_fc_parameters=self.fc_parameters,
-            column_id="id",
-            column_sort="time",
-            column_value="value",
-        ).sort_index(axis=0).sort_index(axis=1)
-        polars_features = extract_features(
-            polars_dict,
-            default_fc_parameters=self.fc_parameters,
-            column_id="id",
-            column_sort="time",
-            column_value="value",
-        ).sort_index(axis=0).sort_index(axis=1)
+        pandas_features = (
+            extract_features(
+                pandas_dict,
+                default_fc_parameters=self.fc_parameters,
+                column_id="id",
+                column_sort="time",
+                column_value="value",
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+        polars_features = (
+            extract_features(
+                polars_dict,
+                default_fc_parameters=self.fc_parameters,
+                column_id="id",
+                column_sort="time",
+                column_value="value",
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
 
         self.assertEqual(list(pandas_features.index), list(polars_features.index))
         self.assertEqual(list(pandas_features.columns), list(polars_features.columns))
