@@ -10,8 +10,15 @@ matter, like for example :func:`tsfresh.utilities.dataframe_functions.roll_time_
 Irrespective of the input format, tsfresh will always return the calculated features in the same output format
 described below.
 
-Typically, the input format options are :class:`pandas.DataFrame` objects, which we will discuss here, and also
-Dask dataframes and PySpark computational graphs, which are discussed here :ref:`large-data-label`.
+Typically, the input format options are :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` objects, which
+we will discuss here, and also Dask dataframes and PySpark computational graphs, which are discussed here
+:ref:`large-data-label`.
+
+To enable Polars input support, install the optional dependency:
+
+.. code:: bash
+
+    pip install "tsfresh[polars]"
 
 There are four important column types that
 make up those DataFrames. Each will be described with an example from the robot failures dataset
@@ -83,6 +90,8 @@ Now, you want to calculate some features with tsfresh so you would pass:
 to the extraction function, to extract features separately for all ids and separately for the x and y values.
 You can also omit the ``column_kind=None, column_value=None`` as this is the default.
 
+The same format is supported for eager :class:`polars.DataFrame`.
+
 Input Option 2. Stacked DataFrame or Long DataFrame
 ---------------------------------------------------
 
@@ -130,6 +139,8 @@ Then you would set:
 
 to end up with the same extracted features.
 You can also omit the value column and let ``tsfresh`` deduce it automatically.
+
+The same format is supported for eager :class:`polars.DataFrame`.
 
 
 Input Option 3. Dictionary of flat DataFrames
@@ -188,6 +199,17 @@ You would pass this dictionary to tsfresh together with the following arguments:
 
 
 In this case we do not need to specify the kind column as the kind is the respective dictionary key.
+
+Dictionary values must all be of one type: all :class:`pandas.DataFrame` or all eager
+:class:`polars.DataFrame`.
+
+
+Polars Input Notes
+------------------
+
+* tsfresh accepts eager :class:`polars.DataFrame` input for wide, long and dictionary-based formats.
+* :class:`polars.LazyFrame` is not supported directly. Call ``collect()`` before passing data to tsfresh.
+* ``extract_features`` keeps its return type unchanged and still returns a :class:`pandas.DataFrame`.
 
 Output Format
 -------------

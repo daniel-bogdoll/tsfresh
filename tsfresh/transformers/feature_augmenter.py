@@ -161,9 +161,9 @@ class FeatureAugmenter(BaseEstimator, TransformerMixin):
         can call this function as often as you like, to change the timeseries later (e.g. if you want to extract for
         different ids).
 
-        :param timeseries_container: The timeseries as a pandas.DataFrame or a dict. See
+        :param timeseries_container: The timeseries as a pandas.DataFrame, eager polars.DataFrame or dict. See
             :mod:`~tsfresh.feature_extraction.extraction` for the format.
-        :type timeseries_container: pandas.DataFrame or dict
+        :type timeseries_container: pandas.DataFrame or polars.DataFrame or dict
         :return: None
         :rtype: None
         """

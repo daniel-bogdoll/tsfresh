@@ -50,6 +50,12 @@ Install all the relevant python packages with
     pip install -e ".[testing]"
     pre-commit install
 
+For developing or testing Polars time-series input support, install:
+
+.. code::
+
+    pip install -e ".[testing,polars]"
+
 
 The last command will dynamically link the tsfresh package which means that changes to the code will directly show up
 for example in your test run.

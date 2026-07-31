@@ -55,8 +55,8 @@ def extract_relevant_features(
     >>> df, y = load_robot_execution_failures()
     >>> X = extract_relevant_features(df, y, column_id='id', column_sort='time')
 
-    :param timeseries_container: The pandas.DataFrame with the time series to compute the features for, or a
-            dictionary of pandas.DataFrames.
+    :param timeseries_container: The pandas.DataFrame or eager polars.DataFrame with the time series to
+            compute the features for, or a dictionary of DataFrames.
             See :func:`~tsfresh.feature_extraction.extraction.extract_features`.
 
     :param X: A DataFrame containing additional features

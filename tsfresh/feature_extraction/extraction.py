@@ -49,11 +49,12 @@ def extract_features(
     """
     Extract features from
 
-    * a :class:`pandas.DataFrame` containing the different time series
+    * a :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` containing the different time series
 
     or
 
-    * a dictionary of :class:`pandas.DataFrame` each containing one type of time series
+    * a dictionary of :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` objects
+      each containing one type of time series
 
     In both cases a :class:`pandas.DataFrame` with the calculated features will be returned.
 
@@ -72,9 +73,9 @@ def extract_features(
     >>> df, _ = load_robot_execution_failures()
     >>> X = extract_features(df, column_id='id', column_sort='time')
 
-    :param timeseries_container: The pandas.DataFrame with the time series to compute the features for, or a
-            dictionary of pandas.DataFrames.
-    :type timeseries_container: pandas.DataFrame or dict
+    :param timeseries_container: The pandas.DataFrame or eager polars.DataFrame with the time series to
+            compute the features for, or a dictionary of DataFrames of one type.
+    :type timeseries_container: pandas.DataFrame or polars.DataFrame or dict
 
     :param default_fc_parameters: mapping from feature calculator names to parameters. Only those names
            which are keys in this dict will be calculated. See the class:`ComprehensiveFCParameters` for

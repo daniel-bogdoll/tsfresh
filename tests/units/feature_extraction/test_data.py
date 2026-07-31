@@ -1,5 +1,8 @@
 import math
+import subprocess
+import sys
 from unittest import TestCase
+from unittest import skipUnless
 from unittest.mock import Mock
 
 import numpy as np
@@ -9,12 +12,20 @@ from dask import dataframe as dd
 from tests.fixtures import DataTestCase
 from tsfresh.feature_extraction.data import (
     LongTsFrameAdapter,
+    PolarsLongTsFrameAdapter,
+    PolarsTsDictAdapter,
+    PolarsWideTsFrameAdapter,
     PartitionedTsData,
     TsDictAdapter,
     WideTsFrameAdapter,
     to_tsdata,
 )
 from tsfresh.utilities.distribution import MultiprocessingDistributor
+
+try:
+    import polars as pl
+except ImportError:  # pragma: no cover
+    pl = None
 
 TEST_DATA_EXPECTED_TUPLES = [
     (
@@ -546,6 +557,88 @@ class DataAdapterTestCase(DataTestCase):
 
         test_df = [1, 2, 3]
         self.assertRaises(ValueError, to_tsdata, test_df, "a", "b", "c", "d")
+
+
+@skipUnless(pl is not None, "polars is not installed")
+class PolarsDataAdapterTestCase(DataTestCase):
+    def test_polars_long_dispatch(self):
+        df = pl.from_pandas(self.create_test_data_sample().reset_index(drop=True))
+        data = to_tsdata(df, "id", "kind", "val", "sort")
+        self.assertIsInstance(data, PolarsLongTsFrameAdapter)
+
+    def test_polars_wide_dispatch(self):
+        df = pl.from_pandas(self.create_test_data_sample_wide().reset_index(drop=False))
+        data = to_tsdata(df, "id", None, None, "sort")
+        self.assertIsInstance(data, PolarsWideTsFrameAdapter)
+
+    def test_polars_dict_dispatch(self):
+        test_df = pl.DataFrame(
+            [{"value": 1, "sort": 1, "id": "id_1"}, {"value": 2, "sort": 2, "id": "id_1"}]
+        )
+        data = to_tsdata(
+            {"a": test_df, "b": test_df},
+            column_id="id",
+            column_value="value",
+            column_sort="sort",
+        )
+        self.assertIsInstance(data, PolarsTsDictAdapter)
+
+    def test_polars_lazyframe_rejected(self):
+        test_df = pl.DataFrame({"id": [1], "kind": ["a"], "value": [1.0]}).lazy()
+        self.assertRaisesRegex(
+            ValueError,
+            "LazyFrame.*collect",
+            to_tsdata,
+            test_df,
+            "id",
+            "kind",
+            "value",
+            None,
+        )
+
+    def test_mixed_dataframe_dict_rejected(self):
+        mixed_dict = {
+            "a": pd.DataFrame({"id": [1], "value": [1.0]}),
+            "b": pl.DataFrame({"id": [1], "value": [1.0]}),
+        }
+        self.assertRaisesRegex(
+            ValueError,
+            "must all be pandas.DataFrame or all be polars.DataFrame",
+            to_tsdata,
+            mixed_dict,
+            "id",
+            None,
+            "value",
+            None,
+        )
+
+    def test_nan_validation_for_polars(self):
+        test_df = pl.DataFrame({"id": [1], "kind": ["a"], "value": [float("nan")]})
+        self.assertRaises(
+            ValueError, to_tsdata, test_df, "id", "kind", "value", None
+        )
+
+    def test_inf_parity_with_pandas(self):
+        pandas_df = pd.DataFrame({"id": [1, 1], "value": [1.0, np.inf]})
+        polars_df = pl.from_pandas(pandas_df)
+
+        pandas_data = to_tsdata(pandas_df, column_id="id", column_value="value")
+        polars_data = to_tsdata(polars_df, column_id="id", column_value="value")
+
+        self.assertEqual(len(pandas_data), len(polars_data))
+
+    def test_import_tsfresh_does_not_import_polars(self):
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; import tsfresh; print('polars' in sys.modules)",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(process.stdout.strip(), "False")
 
 
 class PivotListTestCase(TestCase):

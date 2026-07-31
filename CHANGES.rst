@@ -4,6 +4,14 @@ Changelog
 
 tsfresh uses `Semantic Versioning <http://semver.org/>`_
 
+Unreleased
+==========
+- Added Features
+    - Add native eager Polars DataFrame input support for feature extraction adapters (wide, long and dict formats),
+      while keeping Polars optional and preserving pandas output.
+- Bugfixes/Typos/Documentation:
+    - Document Polars input formats, LazyFrame limitation and optional installation extra.
+
 Version 0.21.2
 ==============
 - Bugfixes/Typos/Documentation:
