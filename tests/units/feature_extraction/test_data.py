@@ -557,9 +557,34 @@ class DataAdapterTestCase(DataTestCase):
         test_df = [1, 2, 3]
         self.assertRaises(ValueError, to_tsdata, test_df, "a", "b", "c", "d")
 
+    def test_pandas_non_default_index_uses_pandas_backend(self):
+        df = pd.DataFrame(
+            {"id": [1, 1], "kind": ["a", "a"], "val": [1.0, 2.0], "sort": [0, 1]},
+            index=[10, 11],
+        )
+        data = to_tsdata(df, "id", "kind", "val", "sort")
+        self.assertIsInstance(data, LongTsFrameAdapter)
+
 
 @skipUnless(pl is not None, "polars is not installed")
 class PolarsDataAdapterTestCase(DataTestCase):
+    def test_pandas_default_index_dispatches_to_polars(self):
+        pandas_df = pd.DataFrame(
+            {"id": [1, 1], "kind": ["a", "a"], "value": [1.0, 2.0], "sort": [0, 1]}
+        )
+        data = to_tsdata(pandas_df, "id", "kind", "value", "sort")
+        self.assertIsInstance(data, PolarsLongTsFrameAdapter)
+
+    def test_pandas_dict_default_index_dispatches_to_polars(self):
+        pandas_df = pd.DataFrame({"id": [1, 1], "value": [1.0, 2.0], "sort": [0, 1]})
+        data = to_tsdata(
+            {"a": pandas_df, "b": pandas_df},
+            column_id="id",
+            column_value="value",
+            column_sort="sort",
+        )
+        self.assertIsInstance(data, PolarsTsDictAdapter)
+
     def test_polars_long_dispatch(self):
         df = pl.from_pandas(self.create_test_data_sample().reset_index(drop=True))
         data = to_tsdata(df, "id", "kind", "val", "sort")

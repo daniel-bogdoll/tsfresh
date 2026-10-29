@@ -10,6 +10,14 @@ except ImportError:  # pragma: no cover
     dd = None
 
 
+def _import_polars():
+    try:
+        import polars as pl
+    except ImportError:  # pragma: no cover
+        return None
+    return pl
+
+
 def _is_polars_type(obj, type_name):
     obj_type = type(obj)
     return obj_type.__name__ == type_name and obj_type.__module__.startswith("polars")
@@ -57,6 +65,33 @@ def _polars_id_type(df, column_id):
     if not id_values:
         return object
     return type(id_values[0])
+
+
+def _is_default_range_index(df):
+    index = df.index
+    return (
+        isinstance(index, pd.RangeIndex)
+        and index.start == 0
+        and index.step == 1
+    )
+
+
+def _should_use_polars_backend_for_pandas_dataframe(df):
+    return _is_default_range_index(df)
+
+
+def _convert_pandas_to_polars_dataframe(df):
+    pl = _import_polars()
+    if pl is None:
+        return None
+    return pl.from_pandas(df.reset_index(drop=True))
+
+
+def _convert_pandas_dict_to_polars_dict(df_dict):
+    pl = _import_polars()
+    if pl is None:
+        return None
+    return {key: pl.from_pandas(df.reset_index(drop=True)) for key, df in df_dict.items()}
 
 
 def _binding_helper(f, kwargs, column_sort, column_id, column_kind, column_value):
@@ -695,15 +730,24 @@ def to_tsdata(
         )
 
     elif isinstance(df, pd.DataFrame):
+        if _should_use_polars_backend_for_pandas_dataframe(df):
+            polars_df = _convert_pandas_to_polars_dataframe(df)
+            if polars_df is not None:
+                if column_kind is not None:
+                    return PolarsLongTsFrameAdapter(
+                        polars_df, column_id, column_kind, column_value, column_sort
+                    )
+                if column_value is not None:
+                    return PolarsWideTsFrameAdapter(
+                        polars_df, column_id, column_sort, [column_value]
+                    )
+                return PolarsWideTsFrameAdapter(polars_df, column_id, column_sort)
+
         if column_kind is not None:
-            return LongTsFrameAdapter(
-                df, column_id, column_kind, column_value, column_sort
-            )
-        else:
-            if column_value is not None:
-                return WideTsFrameAdapter(df, column_id, column_sort, [column_value])
-            else:
-                return WideTsFrameAdapter(df, column_id, column_sort)
+            return LongTsFrameAdapter(df, column_id, column_kind, column_value, column_sort)
+        if column_value is not None:
+            return WideTsFrameAdapter(df, column_id, column_sort, [column_value])
+        return WideTsFrameAdapter(df, column_id, column_sort)
 
     elif _is_polars_dataframe(df):
         if column_kind is not None:
@@ -739,6 +783,13 @@ def to_tsdata(
 
         if contains_polars_dataframes:
             return PolarsTsDictAdapter(df, column_id, column_value, column_sort)
+
+        if all(_should_use_polars_backend_for_pandas_dataframe(value) for value in df.values()):
+            polars_dict = _convert_pandas_dict_to_polars_dict(df)
+            if polars_dict is not None:
+                return PolarsTsDictAdapter(
+                    polars_dict, column_id, column_value, column_sort
+                )
 
         return TsDictAdapter(df, column_id, column_value, column_sort)
 
