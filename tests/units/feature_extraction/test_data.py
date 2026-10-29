@@ -1,5 +1,7 @@
 import math
-from unittest import TestCase
+import subprocess
+import sys
+from unittest import TestCase, skipUnless
 from unittest.mock import Mock
 
 import numpy as np
@@ -10,11 +12,19 @@ from tests.fixtures import DataTestCase
 from tsfresh.feature_extraction.data import (
     LongTsFrameAdapter,
     PartitionedTsData,
+    PolarsLongTsFrameAdapter,
+    PolarsTsDictAdapter,
+    PolarsWideTsFrameAdapter,
     TsDictAdapter,
     WideTsFrameAdapter,
     to_tsdata,
 )
 from tsfresh.utilities.distribution import MultiprocessingDistributor
+
+try:
+    import polars as pl
+except ImportError:  # pragma: no cover
+    pl = None
 
 TEST_DATA_EXPECTED_TUPLES = [
     (
@@ -546,6 +556,114 @@ class DataAdapterTestCase(DataTestCase):
 
         test_df = [1, 2, 3]
         self.assertRaises(ValueError, to_tsdata, test_df, "a", "b", "c", "d")
+
+    def test_pandas_non_default_index_uses_pandas_backend(self):
+        df = pd.DataFrame(
+            {"id": [1, 1], "kind": ["a", "a"], "val": [1.0, 2.0], "sort": [0, 1]},
+            index=[10, 11],
+        )
+        data = to_tsdata(df, "id", "kind", "val", "sort")
+        self.assertIsInstance(data, LongTsFrameAdapter)
+
+
+@skipUnless(pl is not None, "polars is not installed")
+class PolarsDataAdapterTestCase(DataTestCase):
+    def test_pandas_default_index_dispatches_to_polars(self):
+        pandas_df = pd.DataFrame(
+            {"id": [1, 1], "kind": ["a", "a"], "value": [1.0, 2.0], "sort": [0, 1]}
+        )
+        data = to_tsdata(pandas_df, "id", "kind", "value", "sort")
+        self.assertIsInstance(data, PolarsLongTsFrameAdapter)
+
+    def test_pandas_dict_default_index_dispatches_to_polars(self):
+        pandas_df = pd.DataFrame({"id": [1, 1], "value": [1.0, 2.0], "sort": [0, 1]})
+        data = to_tsdata(
+            {"a": pandas_df, "b": pandas_df},
+            column_id="id",
+            column_value="value",
+            column_sort="sort",
+        )
+        self.assertIsInstance(data, PolarsTsDictAdapter)
+
+    def test_polars_long_dispatch(self):
+        df = pl.from_pandas(self.create_test_data_sample().reset_index(drop=True))
+        data = to_tsdata(df, "id", "kind", "val", "sort")
+        self.assertIsInstance(data, PolarsLongTsFrameAdapter)
+
+    def test_polars_wide_dispatch(self):
+        df = pl.from_pandas(self.create_test_data_sample_wide().reset_index(drop=False))
+        data = to_tsdata(df, "id", None, None, "sort")
+        self.assertIsInstance(data, PolarsWideTsFrameAdapter)
+
+    def test_polars_dict_dispatch(self):
+        test_df = pl.DataFrame(
+            [
+                {"value": 1, "sort": 1, "id": "id_1"},
+                {"value": 2, "sort": 2, "id": "id_1"},
+            ]
+        )
+        data = to_tsdata(
+            {"a": test_df, "b": test_df},
+            column_id="id",
+            column_value="value",
+            column_sort="sort",
+        )
+        self.assertIsInstance(data, PolarsTsDictAdapter)
+
+    def test_polars_lazyframe_rejected(self):
+        test_df = pl.DataFrame({"id": [1], "kind": ["a"], "value": [1.0]}).lazy()
+        self.assertRaisesRegex(
+            ValueError,
+            "LazyFrame.*collect",
+            to_tsdata,
+            test_df,
+            "id",
+            "kind",
+            "value",
+            None,
+        )
+
+    def test_mixed_dataframe_dict_rejected(self):
+        mixed_dict = {
+            "a": pd.DataFrame({"id": [1], "value": [1.0]}),
+            "b": pl.DataFrame({"id": [1], "value": [1.0]}),
+        }
+        self.assertRaisesRegex(
+            ValueError,
+            "must all be pandas.DataFrame or all be polars.DataFrame",
+            to_tsdata,
+            mixed_dict,
+            "id",
+            None,
+            "value",
+            None,
+        )
+
+    def test_nan_validation_for_polars(self):
+        test_df = pl.DataFrame({"id": [1], "kind": ["a"], "value": [float("nan")]})
+        self.assertRaises(ValueError, to_tsdata, test_df, "id", "kind", "value", None)
+
+    def test_inf_parity_with_pandas(self):
+        pandas_df = pd.DataFrame({"id": [1, 1], "value": [1.0, np.inf]})
+        polars_df = pl.from_pandas(pandas_df)
+
+        pandas_data = to_tsdata(pandas_df, column_id="id", column_value="value")
+        polars_data = to_tsdata(polars_df, column_id="id", column_value="value")
+
+        self.assertEqual(len(pandas_data), len(polars_data))
+
+    def test_import_tsfresh_imports_polars(self):
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; import tsfresh; print('polars' in sys.modules)",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(process.stdout.strip(), "True")
 
 
 class PivotListTestCase(TestCase):

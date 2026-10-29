@@ -4,6 +4,8 @@
 
 import os
 import tempfile
+from unittest import skipUnless
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -16,6 +18,11 @@ from tsfresh.feature_extraction.settings import (
     PickableSettings,
 )
 from tsfresh.utilities.distribution import IterableDistributorBaseClass, MapDistributor
+
+try:
+    import polars as pl
+except ImportError:  # pragma: no cover
+    pl = None
 
 
 class ExtractionTestCase(DataTestCase):
@@ -438,3 +445,161 @@ class DistributorUsageTestCase(DataTestCase):
         )
 
         self.assertTrue(mock.close.called)
+
+
+@skipUnless(pl is not None, "polars is not installed")
+class PolarsExtractionParityTestCase(DataTestCase):
+    def setUp(self):
+        self.fc_parameters = {"sum_values": None, "mean": None, "median": None}
+
+    def _assert_pandas_polars_equal(self, pandas_df, polars_df, **kwargs):
+        pandas_features = (
+            extract_features(
+                pandas_df, default_fc_parameters=self.fc_parameters, **kwargs
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+        polars_features = (
+            extract_features(
+                polars_df, default_fc_parameters=self.fc_parameters, **kwargs
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+
+        self.assertIsInstance(polars_features, pd.DataFrame)
+        self.assertEqual(list(pandas_features.index), list(polars_features.index))
+        self.assertEqual(pandas_features.index.name, polars_features.index.name)
+        self.assertEqual(list(pandas_features.columns), list(polars_features.columns))
+        np.testing.assert_allclose(
+            pandas_features.to_numpy(),
+            polars_features.to_numpy(),
+            rtol=1e-10,
+            atol=1e-10,
+            equal_nan=True,
+        )
+
+    def test_wide_format_parity(self):
+        pandas_df = pd.DataFrame(
+            {
+                "id": [1, 1, 1, 2, 2, 2],
+                "time": [2, 1, 3, 3, 1, 2],
+                "x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                "y": [6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            }
+        )
+        polars_df = pl.from_pandas(pandas_df)
+        self._assert_pandas_polars_equal(
+            polars_df=polars_df, pandas_df=pandas_df, column_id="id", column_sort="time"
+        )
+
+    def test_long_format_parity(self):
+        pandas_df = pd.DataFrame(
+            {
+                "id": ["a", "a", "a", "a", "b", "b"],
+                "time": [2, 1, 2, 1, 1, 2],
+                "kind": ["x", "x", "y", "y", "x", "x"],
+                "value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            }
+        )
+        polars_df = pl.from_pandas(pandas_df)
+        self._assert_pandas_polars_equal(
+            polars_df=polars_df,
+            pandas_df=pandas_df,
+            column_id="id",
+            column_sort="time",
+            column_kind="kind",
+            column_value="value",
+        )
+
+    def test_datetime_sort_parity(self):
+        pandas_df = pd.DataFrame(
+            {
+                "id": [1, 1, 2, 2],
+                "time": pd.to_datetime(
+                    [
+                        "2024-01-02T00:00:00",
+                        "2024-01-01T00:00:00",
+                        "2024-01-02T00:00:00",
+                        "2024-01-01T00:00:00",
+                    ]
+                ),
+                "value": [3.0, 1.0, 4.0, 2.0],
+            }
+        )
+        polars_df = pl.from_pandas(pandas_df)
+        self._assert_pandas_polars_equal(
+            polars_df=polars_df,
+            pandas_df=pandas_df,
+            column_id="id",
+            column_sort="time",
+            column_value="value",
+        )
+
+    def test_dict_parity(self):
+        pandas_dict = {
+            "a": pd.DataFrame(
+                {"id": [1, 1, 2], "time": [2, 1, 1], "value": [1.0, 2.0, 3.0]}
+            ),
+            "b": pd.DataFrame(
+                {"id": [1, 2, 2], "time": [1, 2, 1], "value": [4.0, 5.0, 6.0]}
+            ),
+        }
+        polars_dict = {kind: pl.from_pandas(df) for kind, df in pandas_dict.items()}
+
+        pandas_features = (
+            extract_features(
+                pandas_dict,
+                default_fc_parameters=self.fc_parameters,
+                column_id="id",
+                column_sort="time",
+                column_value="value",
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+        polars_features = (
+            extract_features(
+                polars_dict,
+                default_fc_parameters=self.fc_parameters,
+                column_id="id",
+                column_sort="time",
+                column_value="value",
+            )
+            .sort_index(axis=0)
+            .sort_index(axis=1)
+        )
+
+        self.assertEqual(list(pandas_features.index), list(polars_features.index))
+        self.assertEqual(list(pandas_features.columns), list(polars_features.columns))
+        np.testing.assert_allclose(
+            pandas_features.to_numpy(),
+            polars_features.to_numpy(),
+            rtol=1e-10,
+            atol=1e-10,
+            equal_nan=True,
+        )
+
+    def test_no_full_frame_to_pandas_conversion(self):
+        polars_df = pl.DataFrame(
+            {
+                "id": [1, 1, 2, 2],
+                "time": [2, 1, 2, 1],
+                "value": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
+        with patch.object(
+            pl.DataFrame,
+            "to_pandas",
+            side_effect=AssertionError("full-frame conversion not allowed"),
+        ):
+            features = extract_features(
+                polars_df,
+                default_fc_parameters=self.fc_parameters,
+                column_id="id",
+                column_sort="time",
+                column_value="value",
+            )
+
+        self.assertIsInstance(features, pd.DataFrame)

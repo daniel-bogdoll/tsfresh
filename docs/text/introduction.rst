@@ -60,7 +60,7 @@ Currently, tsfresh is not suitable:
     * for usage with highly irregular time series; tsfresh uses timestamps only to order observations, while many features are interval-agnostic (e.g., number of peaks) and can be determined for any series, some otherfeatures (e.g., linear trend) assume equal spacing in time, and should be used with care when this assumption is not met.
 
 However, some of these use cases could be implemented, if you have an application in mind, open
-an issue at `<https://github.com/blue-yonder/tsfresh/issues>`_, or feel free to contact us.
+an issue at `<https://github.com/daniel-bogdoll/tsfresh/issues>`_, or feel free to contact us.
 
 What else is out there?
 -----------------------

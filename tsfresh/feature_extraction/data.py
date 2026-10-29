@@ -10,6 +10,90 @@ except ImportError:  # pragma: no cover
     dd = None
 
 
+def _import_polars():
+    try:
+        import polars as pl
+    except ImportError:  # pragma: no cover
+        return None
+    return pl
+
+
+def _is_polars_type(obj, type_name):
+    obj_type = type(obj)
+    return obj_type.__name__ == type_name and obj_type.__module__.startswith("polars")
+
+
+def _is_polars_dataframe(obj):
+    return _is_polars_type(obj, "DataFrame")
+
+
+def _is_polars_lazyframe(obj):
+    return _is_polars_type(obj, "LazyFrame")
+
+
+def _is_polars_series(obj):
+    return _is_polars_type(obj, "Series")
+
+
+def _has_nan_values(series):
+    if _is_polars_series(series):
+        if series.null_count() > 0:
+            return True
+        try:
+            return bool(series.is_nan().any())
+        except Exception:  # pragma: no cover
+            return False
+    return bool(series.isnull().any())
+
+
+def _sorted_group_items(groups):
+    group_items = list(groups.items())
+    try:
+        return sorted(group_items, key=lambda item: item[0])
+    except TypeError:
+        return group_items
+
+
+def _with_row_index(df, row_number_column):
+    if hasattr(df, "with_row_index"):
+        return df.with_row_index(row_number_column)
+    return df.with_row_count(row_number_column)
+
+
+def _polars_id_type(df, column_id):
+    id_values = df.get_column(column_id).head(1).to_list()
+    if not id_values:
+        return object
+    return type(id_values[0])
+
+
+def _is_default_range_index(df):
+    index = df.index
+    return (
+        isinstance(index, pd.RangeIndex)
+        and index.start == 0
+        and index.step == 1
+    )
+
+
+def _should_use_polars_backend_for_pandas_dataframe(df):
+    return _is_default_range_index(df)
+
+
+def _convert_pandas_to_polars_dataframe(df):
+    pl = _import_polars()
+    if pl is None:
+        return None
+    return pl.from_pandas(df.reset_index(drop=True))
+
+
+def _convert_pandas_dict_to_polars_dict(df_dict):
+    pl = _import_polars()
+    if pl is None:
+        return None
+    return {key: pl.from_pandas(df.reset_index(drop=True)) for key, df in df_dict.items()}
+
+
 def _binding_helper(f, kwargs, column_sort, column_id, column_kind, column_value):
     def wrapped_feature_extraction(x):
         # Capture group identity BEFORE sort_values(), because sort_values()
@@ -149,8 +233,8 @@ def _check_nan(df, *columns):
     """
     Raise a ``ValueError`` if one of the columns does not exist or contains NaNs.
 
-    :param df: the pandas DataFrame to test for NaNs
-    :type df: pandas.DataFrame
+    :param df: the DataFrame to test for NaNs
+    :type df: pandas.DataFrame or polars.DataFrame
     :param columns: a list of columns to test for NaNs. If left empty, all columns of the DataFrame will be tested.
     :type columns: str
 
@@ -163,7 +247,7 @@ def _check_nan(df, *columns):
         if col not in df.columns:
             raise ValueError("Column not found: {}".format(col))
 
-        if df[col].isnull().any():
+        if _has_nan_values(df[col]):
             raise ValueError("Column must not contain NaN values: {}".format(col))
 
 
@@ -338,6 +422,157 @@ class TsDictAdapter(PartitionedTsData):
         return sum(grouped_df.ngroups for grouped_df in self.grouped_dict.values())
 
 
+class PolarsWideTsFrameAdapter(PartitionedTsData):
+    def __init__(self, df, column_id, column_sort=None, value_columns=None):
+        if column_id is None:
+            raise ValueError("A value for column_id needs to be supplied")
+
+        _check_nan(df, column_id)
+
+        if not value_columns:
+            value_columns = _get_value_columns(df, column_id, column_sort)
+
+        _check_nan(df, *value_columns)
+        _check_colname(*value_columns)
+
+        if column_sort is not None:
+            _check_nan(df, column_sort)
+
+        self.value_columns = value_columns
+        self.column_sort = column_sort
+        self.row_number_column = "_tsfresh_row_number"
+        self.df_grouped = _with_row_index(df, self.row_number_column).partition_by(
+            column_id, maintain_order=True, as_dict=True
+        )
+
+        super().__init__(df, column_id)
+        self.df_id_type = _polars_id_type(df, column_id)
+
+    def __len__(self):
+        return len(self.df_grouped) * len(self.value_columns)
+
+    def __iter__(self):
+        for group_name, group in _sorted_group_items(self.df_grouped):
+            if self.column_sort is not None:
+                group = group.sort([self.column_sort, self.row_number_column])
+
+            if isinstance(group_name, tuple):
+                group_name = group_name[0]
+
+            group_index = group.get_column(self.row_number_column).to_list()
+            for kind in self.value_columns:
+                yield Timeseries(
+                    group_name,
+                    kind,
+                    pd.Series(
+                        group.get_column(kind).to_list(), index=group_index, name=kind
+                    ),
+                )
+
+
+class PolarsLongTsFrameAdapter(PartitionedTsData):
+    def __init__(self, df, column_id, column_kind, column_value=None, column_sort=None):
+        if column_id is None:
+            raise ValueError("A value for column_id needs to be supplied")
+        if column_kind is None:
+            raise ValueError("A value for column_kind needs to be supplied")
+
+        if column_value is None:
+            possible_value_columns = _get_value_columns(
+                df, column_id, column_sort, column_kind
+            )
+            if len(possible_value_columns) != 1:
+                raise ValueError(
+                    "Could not guess the value column, as the number of unused columns os not equal to 1."
+                    f"These columns where currently unused: {','.join(possible_value_columns)}"
+                    "Please hand it to the function as an argument."
+                )
+            self.column_value = possible_value_columns[0]
+        else:
+            self.column_value = column_value
+
+        _check_nan(df, column_id, column_kind, self.column_value)
+
+        if column_sort is not None:
+            _check_nan(df, column_sort)
+
+        self.column_sort = column_sort
+        self.row_number_column = "_tsfresh_row_number"
+        self.df_grouped = _with_row_index(df, self.row_number_column).partition_by(
+            [column_id, column_kind], maintain_order=True, as_dict=True
+        )
+
+        super().__init__(df, column_id)
+        self.df_id_type = _polars_id_type(df, column_id)
+
+    def __len__(self):
+        return len(self.df_grouped)
+
+    def __iter__(self):
+        for group_key, group in _sorted_group_items(self.df_grouped):
+            if self.column_sort is not None:
+                group = group.sort([self.column_sort, self.row_number_column])
+
+            group_index = group.get_column(self.row_number_column).to_list()
+            yield Timeseries(
+                group_key[0],
+                str(group_key[1]),
+                pd.Series(
+                    group.get_column(self.column_value).to_list(),
+                    index=group_index,
+                    name=self.column_value,
+                ),
+            )
+
+
+class PolarsTsDictAdapter(PartitionedTsData):
+    def __init__(self, ts_dict, column_id, column_value, column_sort=None):
+        _check_colname(*list(ts_dict.keys()))
+
+        for df in ts_dict.values():
+            _check_nan(df, column_id, column_value)
+
+        if column_sort is not None:
+            for df in ts_dict.values():
+                _check_nan(df, column_sort)
+
+        self.column_value = column_value
+        self.column_sort = column_sort
+        self.row_number_column = "_tsfresh_row_number"
+        self.grouped_dict = {
+            key: _with_row_index(df, self.row_number_column).partition_by(
+                column_id, maintain_order=True, as_dict=True
+            )
+            for key, df in ts_dict.items()
+        }
+
+        first_df = next(iter(ts_dict.values()))
+        super().__init__(first_df, column_id)
+        self.df_id_type = _polars_id_type(first_df, column_id)
+
+    def __iter__(self):
+        for kind, grouped_df in self.grouped_dict.items():
+            for ts_id, group in _sorted_group_items(grouped_df):
+                if self.column_sort is not None:
+                    group = group.sort([self.column_sort, self.row_number_column])
+
+                if isinstance(ts_id, tuple):
+                    ts_id = ts_id[0]
+
+                yield Timeseries(
+                    ts_id,
+                    str(kind),
+                    pd.Series(
+                        group.get_column(self.column_value).to_list(),
+                        index=group.get_column(self.row_number_column).to_list(),
+                        name=self.column_value,
+                    ),
+                )
+
+    def __len__(self):
+        return sum(len(grouped_df) for grouped_df in self.grouped_dict.values())
+
+
 class DaskTsAdapter(TsData):
     def __init__(
         self, df, column_id, column_kind=None, column_value=None, column_sort=None
@@ -468,7 +703,7 @@ def to_tsdata(
          (2, 'b', pd.Series([-0.576254, -1.219238]))
 
     :param df: one of the supported input formats
-    :type df: pd.DataFrame|dict|TsData
+    :type df: pd.DataFrame|polars.DataFrame|dict|TsData
 
     :param column_id: The name of the id column to group by.
     :type column_id: str|None
@@ -488,18 +723,74 @@ def to_tsdata(
     if isinstance(df, TsData):
         return df
 
+    elif _is_polars_lazyframe(df):
+        raise ValueError(
+            "df must be an eager polars.DataFrame. Polars LazyFrame is not supported. "
+            "Please call collect() before passing the data to tsfresh."
+        )
+
     elif isinstance(df, pd.DataFrame):
+        if _should_use_polars_backend_for_pandas_dataframe(df):
+            polars_df = _convert_pandas_to_polars_dataframe(df)
+            if polars_df is not None:
+                if column_kind is not None:
+                    return PolarsLongTsFrameAdapter(
+                        polars_df, column_id, column_kind, column_value, column_sort
+                    )
+                if column_value is not None:
+                    return PolarsWideTsFrameAdapter(
+                        polars_df, column_id, column_sort, [column_value]
+                    )
+                return PolarsWideTsFrameAdapter(polars_df, column_id, column_sort)
+
         if column_kind is not None:
-            return LongTsFrameAdapter(
+            return LongTsFrameAdapter(df, column_id, column_kind, column_value, column_sort)
+        if column_value is not None:
+            return WideTsFrameAdapter(df, column_id, column_sort, [column_value])
+        return WideTsFrameAdapter(df, column_id, column_sort)
+
+    elif _is_polars_dataframe(df):
+        if column_kind is not None:
+            return PolarsLongTsFrameAdapter(
                 df, column_id, column_kind, column_value, column_sort
             )
         else:
             if column_value is not None:
-                return WideTsFrameAdapter(df, column_id, column_sort, [column_value])
+                return PolarsWideTsFrameAdapter(
+                    df, column_id, column_sort, [column_value]
+                )
             else:
-                return WideTsFrameAdapter(df, column_id, column_sort)
+                return PolarsWideTsFrameAdapter(df, column_id, column_sort)
 
     elif isinstance(df, dict):
+        if any(_is_polars_lazyframe(value) for value in df.values()):
+            raise ValueError(
+                "Dictionary values must be eager polars.DataFrame objects when using Polars input. "
+                "Please call collect() on LazyFrame values before passing them to tsfresh."
+            )
+
+        contains_pandas_dataframes = any(
+            isinstance(value, pd.DataFrame) for value in df.values()
+        )
+        contains_polars_dataframes = any(
+            _is_polars_dataframe(value) for value in df.values()
+        )
+
+        if contains_pandas_dataframes and contains_polars_dataframes:
+            raise ValueError(
+                "Dictionary values must all be pandas.DataFrame or all be polars.DataFrame."
+            )
+
+        if contains_polars_dataframes:
+            return PolarsTsDictAdapter(df, column_id, column_value, column_sort)
+
+        if all(_should_use_polars_backend_for_pandas_dataframe(value) for value in df.values()):
+            polars_dict = _convert_pandas_dict_to_polars_dict(df)
+            if polars_dict is not None:
+                return PolarsTsDictAdapter(
+                    polars_dict, column_id, column_value, column_sort
+                )
+
         return TsDictAdapter(df, column_id, column_value, column_sort)
 
     elif dd and isinstance(df, dd.DataFrame):

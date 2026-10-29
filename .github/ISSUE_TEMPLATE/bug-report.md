@@ -10,7 +10,7 @@ Thank you very much for filing a bug report!
 We, the maintainers, are happy to help you. When opening an issue, please provide the following information to us.
 
 If your issue is more a question on how o use tsfresh for your use-case, please have a look into
-the Q&A: https://github.com/blue-yonder/tsfresh/discussions/categories/q-a
+the Q&A: https://github.com/daniel-bogdoll/tsfresh/discussions/categories/q-a
 -->
 
 **The problem**:

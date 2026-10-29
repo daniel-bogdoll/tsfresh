@@ -18,6 +18,15 @@ from tsfresh.utilities.distribution import (
 )
 
 
+def _is_polars_type(obj, type_name):
+    obj_type = type(obj)
+    return obj_type.__name__ == type_name and obj_type.__module__.startswith("polars")
+
+
+def _is_polars_dataframe(obj):
+    return _is_polars_type(obj, "DataFrame")
+
+
 def check_for_nans_in_columns(df, columns=None):
     """
     Helper function to check for ``NaN`` in the data frame and raise a ``ValueError`` if there is one.
@@ -238,13 +247,24 @@ def restrict_input_to_index(df_or_dict, column_id, index):
             raise AttributeError(msg)
 
         df_or_dict_restricted = df_or_dict[df_or_dict[column_id].isin(index)]
+    elif _is_polars_dataframe(df_or_dict):
+        ids_in_df = set(df_or_dict[column_id].to_list())
+        ids_in_index = set(index)
+        present_ids = ids_in_index & ids_in_df
+        if not present_ids:
+            msg = "The ids of the time series container and the index of the input data X do not share any identifier!"
+            raise AttributeError(msg)
+
+        df_or_dict_restricted = df_or_dict.filter(df_or_dict[column_id].is_in(index))
     elif isinstance(df_or_dict, dict):
         df_or_dict_restricted = {
             kind: restrict_input_to_index(df, column_id, index)
             for kind, df in df_or_dict.items()
         }
     else:
-        raise TypeError("df_or_dict should be of type dict or pandas.DataFrame")
+        raise TypeError(
+            "df_or_dict should be of type dict, pandas.DataFrame or polars.DataFrame"
+        )
 
     return df_or_dict_restricted
 
@@ -265,10 +285,14 @@ def get_ids(df_or_dict, column_id):
     """
     if isinstance(df_or_dict, pd.DataFrame):
         return set(df_or_dict[column_id])
+    elif _is_polars_dataframe(df_or_dict):
+        return set(df_or_dict[column_id].to_list())
     elif isinstance(df_or_dict, dict):
-        return set.union(*[set(df[column_id]) for _, df in df_or_dict.items()])
+        return set.union(*[get_ids(df, column_id) for _, df in df_or_dict.items()])
     else:
-        raise TypeError("df_or_dict should be of type dict or pandas.DataFrame")
+        raise TypeError(
+            "df_or_dict should be of type dict, pandas.DataFrame or polars.DataFrame"
+        )
 
 
 def _restore_grouping_keys(df_chunk, grouper, group_name):

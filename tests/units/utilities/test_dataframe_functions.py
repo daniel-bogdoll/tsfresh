@@ -2,7 +2,7 @@
 # This file as well as the whole tsfresh package are licenced under the MIT licence (see the LICENCE.txt)
 # Maximilian Christ (maximilianchrist.com), Blue Yonder Gmbh, 2016
 import warnings
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,11 @@ from tests.fixtures import warning_free
 from tsfresh import extract_relevant_features
 from tsfresh.feature_extraction.settings import MinimalFCParameters
 from tsfresh.utilities import dataframe_functions
+
+try:
+    import polars as pl
+except ImportError:  # pragma: no cover
+    pl = None
 
 
 class RollingTestCase(TestCase):
@@ -1299,6 +1304,12 @@ class RestrictTestCase(TestCase):
             [1, 2, 3],
         )
 
+    @skipUnless(pl is not None, "polars is not installed")
+    def test_restrict_polars_dataframe(self):
+        df = pl.DataFrame({"id": [1, 2, 3, 2]})
+        df_restricted = dataframe_functions.restrict_input_to_index(df, "id", [2])
+        self.assertEqual(df_restricted["id"].to_list(), [2, 2])
+
 
 class GetRangeValuesPerColumnTestCase(TestCase):
     def test_ignores_non_finite_values(self):
@@ -1526,6 +1537,11 @@ class GetIDsTestCase(TestCase):
     def test_get_id_wrong(self):
         other_type = np.array([1, 2, 3])
         self.assertRaises(TypeError, dataframe_functions.get_ids, other_type, "id")
+
+    @skipUnless(pl is not None, "polars is not installed")
+    def test_get_id__correct_polars_dataframe(self):
+        df = pl.DataFrame({"_value": [1, 2, 3, 4, 10, 11], "id": [1, 1, 1, 1, 2, 2]})
+        self.assertEqual(dataframe_functions.get_ids(df, "id"), {1, 2})
 
 
 class AddSubIdTestCase(TestCase):
