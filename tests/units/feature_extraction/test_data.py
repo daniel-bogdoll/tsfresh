@@ -652,7 +652,7 @@ class PolarsDataAdapterTestCase(DataTestCase):
 
         self.assertEqual(len(pandas_data), len(polars_data))
 
-    def test_import_tsfresh_does_not_import_polars(self):
+    def test_import_tsfresh_imports_polars(self):
         process = subprocess.run(
             [
                 sys.executable,
@@ -663,7 +663,7 @@ class PolarsDataAdapterTestCase(DataTestCase):
             capture_output=True,
             text=True,
         )
-        self.assertEqual(process.stdout.strip(), "False")
+        self.assertEqual(process.stdout.strip(), "True")
 
 
 class PivotListTestCase(TestCase):
