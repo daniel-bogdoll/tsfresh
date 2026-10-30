@@ -10,6 +10,34 @@ from tsfresh.feature_extraction import extract_features
 from tsfresh.utilities.dataframe_functions import restrict_input_to_index
 
 
+def _is_polars_dataframe(value):
+    value_type = type(value)
+    return (
+        value_type.__name__ == "DataFrame"
+        and value_type.__module__.startswith("polars")
+    )
+
+
+def _polars_to_pandas_indexed(value):
+    columns = value.to_dict(as_series=False)
+    id_column = value.columns[0]
+    index = columns.pop(id_column)
+    result = pd.DataFrame(columns, index=index)
+    result.index.name = id_column
+    return result
+
+
+def _pandas_to_polars_indexed(value):
+    import polars as pl
+
+    return pl.DataFrame(
+        {
+            str(value.index.name or "id"): value.index.to_list(),
+            **value.to_dict(orient="list"),
+        }
+    )
+
+
 class FeatureAugmenter(BaseEstimator, TransformerMixin):
     """
     Sklearn-compatible estimator, for calculating and adding many features calculated from a given time series
@@ -204,6 +232,10 @@ class FeatureAugmenter(BaseEstimator, TransformerMixin):
                 "You have to provide a time series using the set_timeseries_container function before."
             )
 
+        polars_input = _is_polars_dataframe(X)
+        if polars_input:
+            X = _polars_to_pandas_indexed(X)
+
         # Extract only features for the IDs in X.index
         timeseries_container_X = restrict_input_to_index(
             self.timeseries_container, self.column_id, X.index
@@ -232,4 +264,4 @@ class FeatureAugmenter(BaseEstimator, TransformerMixin):
             X, extracted_features, left_index=True, right_index=True, how="left"
         )
 
-        return X
+        return _pandas_to_polars_indexed(X) if polars_input else X

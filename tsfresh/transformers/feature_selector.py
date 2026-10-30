@@ -9,6 +9,23 @@ from tsfresh import defaults
 from tsfresh.feature_selection.relevance import calculate_relevance_table
 
 
+def _is_polars_dataframe(value):
+    value_type = type(value)
+    return (
+        value_type.__name__ == "DataFrame"
+        and value_type.__module__.startswith("polars")
+    )
+
+
+def _polars_to_pandas(value):
+    columns = value.to_dict(as_series=False)
+    id_column = value.columns[0]
+    index = columns.pop(id_column)
+    result = pd.DataFrame(columns, index=index)
+    result.index.name = id_column
+    return result
+
+
 class FeatureSelector(BaseEstimator, TransformerMixin):
     """
     Sklearn-compatible estimator, for reducing the number of features in a dataset to only those,
@@ -166,7 +183,9 @@ class FeatureSelector(BaseEstimator, TransformerMixin):
         :return: the fitted estimator with the information, which features are relevant
         :rtype: FeatureSelector
         """
-        if not isinstance(X, pd.DataFrame):
+        if _is_polars_dataframe(X):
+            X = _polars_to_pandas(X)
+        elif not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X.copy())
 
         if not isinstance(y, pd.Series):
@@ -235,5 +254,7 @@ class FeatureSelector(BaseEstimator, TransformerMixin):
 
         if isinstance(X, pd.DataFrame):
             return X.copy().loc[:, self.relevant_features]
+        elif _is_polars_dataframe(X):
+            return X.select(self.relevant_features)
         else:
             return X[:, self.relevant_features]

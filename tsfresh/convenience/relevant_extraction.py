@@ -6,12 +6,41 @@ import pandas as pd
 
 from tsfresh import defaults
 from tsfresh.feature_extraction import extract_features
+from tsfresh.feature_extraction.extraction import _get_output_format
 from tsfresh.feature_selection import select_features
 from tsfresh.utilities.dataframe_functions import (
     get_ids,
     impute,
     restrict_input_to_index,
 )
+
+
+def _is_polars_dataframe(value):
+    value_type = type(value)
+    return (
+        value_type.__name__ == "DataFrame"
+        and value_type.__module__.startswith("polars")
+    )
+
+
+def _polars_to_pandas_indexed(value):
+    columns = value.to_dict(as_series=False)
+    id_column = value.columns[0]
+    index = columns.pop(id_column)
+    result = pd.DataFrame(columns, index=index)
+    result.index.name = id_column
+    return result
+
+
+def _pandas_to_polars_indexed(value):
+    import polars as pl
+
+    return pl.DataFrame(
+        {
+            str(value.index.name or "id"): value.index.to_list(),
+            **value.to_dict(orient="list"),
+        }
+    )
 
 
 def extract_relevant_features(
@@ -160,6 +189,15 @@ def extract_relevant_features(
         len(set(y)) > 1
     ), "Feature selection is only possible if more than 1 label/class is provided"
 
+    output_format = _get_output_format(
+        X if X is not None else timeseries_container
+    )
+    polars_features_input = _is_polars_dataframe(X)
+    if polars_features_input:
+        X = _polars_to_pandas_indexed(X)
+    elif X is not None and not isinstance(X, pd.DataFrame):
+        X = pd.DataFrame(X, index=y.index)
+
     if X is not None:
         timeseries_container = restrict_input_to_index(
             timeseries_container, column_id, X.index
@@ -215,8 +253,18 @@ def extract_relevant_features(
     )
 
     if X is None:
-        X = X_sel
+        if output_format == "pandas":
+            X = X_sel
+        else:
+            import polars as pl
+
+            X = pl.DataFrame(
+                {
+                    str(X_sel.index.name or column_id or "id"): X_sel.index.to_list(),
+                    **X_sel.to_dict(orient="list"),
+                }
+            )
     else:
         X = pd.merge(X, X_sel, left_index=True, right_index=True, how="left")
 
-    return X
+    return _pandas_to_polars_indexed(X) if output_format == "polars" else X

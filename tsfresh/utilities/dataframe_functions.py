@@ -78,6 +78,9 @@ def impute(df_impute):
     if len(df_impute) == 0:
         return df_impute
 
+    if _is_polars_dataframe(df_impute):
+        return _polars_impute(df_impute)
+
     col_to_max, col_to_min, col_to_median = get_range_values_per_column(df_impute)
     df_impute = impute_dataframe_range(df_impute, col_to_max, col_to_min, col_to_median)
 
@@ -99,6 +102,27 @@ def impute_dataframe_zero(df_impute):
     """
     if len(df_impute) == 0:
         return df_impute
+
+    if _is_polars_dataframe(df_impute):
+        import polars as pl
+
+        return df_impute.with_columns(
+            [
+                (
+                    pl.when(
+                        pl.col(column).is_null()
+                        | pl.col(column).is_nan()
+                        | pl.col(column).is_infinite()
+                    )
+                    .then(0.0)
+                    .otherwise(pl.col(column))
+                    .alias(column)
+                    if df_impute.schema[column].is_numeric()
+                    else pl.col(column)
+                )
+                for column in df_impute.columns
+            ]
+        )
 
     df_impute.replace([np.inf, -np.inf], 0, inplace=True)
     df_impute.fillna(0, inplace=True)
@@ -143,6 +167,49 @@ def impute_dataframe_range(df_impute, col_to_max, col_to_min, col_to_median):
     if len(df_impute) == 0:
         return df_impute
 
+    if _is_polars_dataframe(df_impute):
+        import polars as pl
+
+        columns = [
+            column
+            for column in df_impute.columns
+            if df_impute.schema[column].is_numeric()
+        ]
+        if not (
+            set(columns) <= set(col_to_median)
+            and set(columns) <= set(col_to_max)
+            and set(columns) <= set(col_to_min)
+        ):
+            raise ValueError(
+                "Some of the dictionaries col_to_median, col_to_max, col_to_min "
+                "contains more or less keys than the column names in df"
+            )
+        replacements = []
+        for column in df_impute.columns:
+            if not df_impute.schema[column].is_numeric():
+                replacements.append(pl.col(column))
+                continue
+            if not all(
+                np.isfinite(values[column])
+                for values in (col_to_median, col_to_min, col_to_max)
+            ):
+                raise ValueError(
+                    "Some of the dictionaries col_to_median, col_to_min, col_to_max "
+                    "contains non finite values to replace"
+                )
+            value = pl.col(column)
+            replacements.append(
+                pl.when(value == float("inf"))
+                .then(col_to_max[column])
+                .when(value == float("-inf"))
+                .then(col_to_min[column])
+                .when(value.is_null() | value.is_nan())
+                .then(col_to_median[column])
+                .otherwise(value)
+                .alias(column)
+            )
+        return df_impute.with_columns(replacements)
+
     columns = df_impute.columns
 
     # Making sure col_to_median, col_to_max and col_to_min have entries for every column
@@ -180,6 +247,33 @@ def impute_dataframe_range(df_impute, col_to_max, col_to_min, col_to_median):
 
     df_impute.astype(np.float64, copy=False)
     return df_impute
+
+
+def _polars_impute(df_impute):
+    import polars as pl
+
+    ranges = {}
+    for column in df_impute.columns:
+        if not df_impute.schema[column].is_numeric():
+            continue
+        values = pl.col(column)
+        finite = values.is_finite()
+        stats = df_impute.select(
+            [
+                values.filter(finite).max().alias("max"),
+                values.filter(finite).min().alias("min"),
+                values.filter(finite).median().alias("median"),
+            ]
+        ).row(0)
+        ranges[column] = tuple(
+            0.0 if value is None else float(value) for value in stats
+        )
+    return impute_dataframe_range(
+        df_impute,
+        {column: values[0] for column, values in ranges.items()},
+        {column: values[1] for column, values in ranges.items()},
+        {column: values[2] for column, values in ranges.items()},
+    )
 
 
 def get_range_values_per_column(df):
