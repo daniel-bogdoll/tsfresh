@@ -5,6 +5,7 @@ from unittest import TestCase
 
 import dask.dataframe as dd
 import pandas as pd
+import polars as pl
 
 from tsfresh import extract_features, extract_relevant_features
 from tsfresh.examples.driftbif_simulation import load_driftbif
@@ -149,7 +150,8 @@ class FeatureExtractionTestCase(TestCase):
             column_kind="dimension",
             column_value="value",
             default_fc_parameters=MinimalFCParameters(),
-        ).compute()
+            output_format="pandas",
+        )
         self.assertIn("1__mean", X.columns)
         self.assertAlmostEqual(X.loc["5", "1__mean"], 5.516e-05, 4)
         self.assertIn("11", X.index)
@@ -161,7 +163,8 @@ class FeatureExtractionTestCase(TestCase):
             column_sort="time",
             column_kind="dimension",
             default_fc_parameters=MinimalFCParameters(),
-        ).compute()
+            output_format="pandas",
+        )
         self.assertIn("1__mean", X.columns)
         self.assertAlmostEqual(X.loc["5", "1__mean"], 5.516e-05, 4)
         self.assertIn("11", X.index)
@@ -172,7 +175,8 @@ class FeatureExtractionTestCase(TestCase):
             column_id="my_id",
             column_sort="time",
             default_fc_parameters=MinimalFCParameters(),
-        ).compute()
+            output_format="pandas",
+        )
         self.assertIn("value__mean", X.columns)
         self.assertAlmostEqual(X.loc["5", "value__mean"], 5.516e-05, 4)
         self.assertIn("11", X.index)
@@ -182,11 +186,28 @@ class FeatureExtractionTestCase(TestCase):
             df.drop(columns=["dimension", "time"]),
             column_id="my_id",
             default_fc_parameters=MinimalFCParameters(),
-        ).compute()
+            output_format="pandas",
+        )
         self.assertIn("value__mean", X.columns)
         self.assertAlmostEqual(X.loc["5", "value__mean"], 5.516e-05, 4)
         self.assertIn("11", X.index)
         self.assertEqual(X.shape, (100, 10))
+
+    def test_dask_default_output_is_polars(self):
+        df = dd.from_pandas(self.df, npartitions=1)
+
+        X = extract_features(
+            df,
+            column_id="my_id",
+            column_sort="time",
+            column_kind="dimension",
+            column_value="value",
+            default_fc_parameters=MinimalFCParameters(),
+        )
+
+        self.assertIsInstance(X, pl.DataFrame)
+        self.assertIn("1__mean", X.columns)
+        self.assertEqual(X.shape, (100, 21))
 
     def test_dask_no_pivot(self):
         df = dd.from_pandas(self.df, npartitions=1)
