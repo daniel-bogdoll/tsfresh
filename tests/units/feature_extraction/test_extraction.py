@@ -462,7 +462,10 @@ class PolarsExtractionParityTestCase(DataTestCase):
         )
         polars_features = (
             extract_features(
-                polars_df, default_fc_parameters=self.fc_parameters, **kwargs
+                polars_df,
+                default_fc_parameters=self.fc_parameters,
+                output_format="pandas",
+                **kwargs
             )
             .sort_index(axis=0)
             .sort_index(axis=1)
@@ -566,6 +569,7 @@ class PolarsExtractionParityTestCase(DataTestCase):
                 column_id="id",
                 column_sort="time",
                 column_value="value",
+                output_format="pandas",
             )
             .sort_index(axis=0)
             .sort_index(axis=1)
@@ -602,4 +606,28 @@ class PolarsExtractionParityTestCase(DataTestCase):
                 column_value="value",
             )
 
-        self.assertIsInstance(features, pd.DataFrame)
+        self.assertIsInstance(features, pl.DataFrame)
+
+    def test_default_output_matches_input_format(self):
+        pandas_df = pd.DataFrame(
+            {"id": [1, 1, 2, 2], "time": [2, 1, 2, 1], "value": [1.0, 2.0, 3.0, 4.0]}
+        )
+        polars_df = pl.from_pandas(pandas_df)
+
+        pandas_features = extract_features(
+            pandas_df,
+            default_fc_parameters=self.fc_parameters,
+            column_id="id",
+            column_sort="time",
+            column_value="value",
+        )
+        polars_features = extract_features(
+            polars_df,
+            default_fc_parameters=self.fc_parameters,
+            column_id="id",
+            column_sort="time",
+            column_value="value",
+        )
+
+        self.assertIsInstance(pandas_features, pd.DataFrame)
+        self.assertIsInstance(polars_features, pl.DataFrame)
