@@ -86,14 +86,16 @@ def _convert_pandas_to_polars_dataframe(df):
     pl = _import_polars()
     if pl is None:
         return None
-    return pl.from_pandas(df.reset_index(drop=True))
+    return pl.from_pandas(df, include_index=False)
 
 
 def _convert_pandas_dict_to_polars_dict(df_dict):
     pl = _import_polars()
     if pl is None:
         return None
-    return {key: pl.from_pandas(df.reset_index(drop=True)) for key, df in df_dict.items()}
+    return {
+        key: pl.from_pandas(df, include_index=False) for key, df in df_dict.items()
+    }
 
 
 def _binding_helper(f, kwargs, column_sort, column_id, column_kind, column_value):
@@ -677,7 +679,7 @@ class DaskTsAdapter(TsData):
         )
         return self.df.apply(bound_function, meta=meta)
 
-    def pivot(self, results, output_format="pandas"):
+    def pivot(self, results, output_format="polars"):
         """
         The extract features function for dask returns a
         dataframe of [id, variable, value].
@@ -686,13 +688,26 @@ class DaskTsAdapter(TsData):
 
         Attention: this is highly non-optimized!
         """
+        if output_format not in {"polars", "pandas"}:
+            raise ValueError("output_format must be either 'polars' or 'pandas'")
+
         results = results.reset_index(drop=True).persist()
         results = results.categorize(columns=["variable"])
         feature_table = results.pivot_table(
             index=self.column_id, columns="variable", values="value", aggfunc="sum"
-        )
+        ).compute()
 
-        return feature_table
+        if output_format == "pandas":
+            return feature_table
+
+        pl = _import_polars()
+        if pl is None:
+            raise ImportError(
+                "Polars is required for output_format='polars'. "
+                "Install it with `pip install tsfresh-polars[polars]`."
+            )
+
+        return pl.from_pandas(feature_table, include_index=True)
 
 
 def to_tsdata(

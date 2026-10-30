@@ -45,7 +45,7 @@ def extract_features(
     profiling_sorting=defaults.PROFILING_SORTING,
     distributor=None,
     pivot=True,
-    output_format="polars",
+    output_format=None,
 ):
     """
     Extract features from
@@ -57,8 +57,10 @@ def extract_features(
     * a dictionary of :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` objects
       each containing one type of time series
 
-    By default a :class:`polars.DataFrame` with the calculated features will be returned.
-    Pass ``output_format="pandas"`` for the legacy pandas result.
+    By default, the result uses the same dataframe format as the input. Pandas inputs
+    produce a :class:`pandas.DataFrame`; Polars inputs and other supported input
+    formats produce a :class:`polars.DataFrame`. Pass ``output_format`` to override
+    this behavior.
 
     For a list of all the calculated time series features, please see the
     :class:`~tsfresh.feature_extraction.settings.ComprehensiveFCParameters` class,
@@ -103,7 +105,8 @@ def extract_features(
     :param column_value: The name for the column keeping the value itself. Please see :ref:`data-formats-label`.
     :type column_value: str
 
-    :param output_format: Output dataframe format, either ``"polars"`` (default) or ``"pandas"``.
+    :param output_format: Output dataframe format, either ``"polars"`` or ``"pandas"``.
+            If omitted, pandas inputs produce pandas output and all other inputs produce Polars output.
     :type output_format: str
 
     :param n_jobs: The number of processes to use for parallelization. If zero, no parallelization is used.
@@ -150,6 +153,8 @@ def extract_features(
 
     # Always use the standardized way of storing the data.
     # See the function normalize_input_to_internal_representation for more information.
+    if output_format is None:
+        output_format = _get_output_format(timeseries_container)
 
     # Use the standard setting if the user did not supply ones himself.
     if default_fc_parameters is None and kind_to_fc_parameters is None:
@@ -209,6 +214,20 @@ def extract_features(
         )
 
     return result
+
+
+def _get_output_format(timeseries_container):
+    if isinstance(timeseries_container, pd.DataFrame):
+        return "pandas"
+
+    if isinstance(timeseries_container, dict) and timeseries_container:
+        if all(
+            isinstance(value, pd.DataFrame)
+            for value in timeseries_container.values()
+        ):
+            return "pandas"
+
+    return "polars"
 
 
 def _do_extraction(
