@@ -7,8 +7,9 @@ tsfresh offers three different options to specify the format of the time series 
 :func:`tsfresh.extract_features` (and all utility functions that expect a time series, for that
 matter, like for example :func:`tsfresh.utilities.dataframe_functions.roll_time_series`).
 
-Irrespective of the input format, tsfresh will always return the calculated features in the same output format
-described below.
+By default, pandas inputs return calculated features as a :class:`pandas.DataFrame`.
+Eager Polars inputs and all other supported input formats return a :class:`polars.DataFrame`.
+Pass ``output_format`` to explicitly override this default.
 
 Typically, the input format options are :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` objects, which
 we will discuss here, and also Dask dataframes and PySpark computational graphs, which are discussed here
@@ -209,14 +210,16 @@ Polars Input Notes
 
 * tsfresh accepts eager :class:`polars.DataFrame` input for wide, long and dictionary-based formats.
 * :class:`polars.LazyFrame` is not supported directly. Call ``collect()`` before passing data to tsfresh.
-* ``extract_features`` returns a :class:`polars.DataFrame` by default. Pass
-  ``output_format="pandas"`` for the legacy :class:`pandas.DataFrame` result.
+* ``extract_features`` returns a :class:`polars.DataFrame` by default for Polars input.
+  Pandas input returns a :class:`pandas.DataFrame` by default. Pass ``output_format`` to
+  explicitly select either result type.
 
 Output Format
 -------------
 
-The resulting feature matrix, containing the extracted features, is the same for all three input options.
-It will always be a :class:`pandas.DataFrame` with the following layout:
+The resulting feature matrix, containing the extracted features, has the same logical
+contents for all input options. Its concrete type follows the default output rule above,
+or the explicitly selected ``output_format``. It has the following layout:
 
 +----+-------------+-----+-------------+-------------+-----+-------------+
 | id | x_feature_1 | ... | x_feature_N | y_feature_1 | ... | y_feature_N |

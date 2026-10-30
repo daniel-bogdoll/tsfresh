@@ -38,8 +38,9 @@ features = extract_features(
 ```
 
 `extract_features` accepts pandas DataFrames, Polars DataFrames, and supported dictionary
-formats. Its default result is a Polars DataFrame with the identifier in a regular column.
-Use `output_format="pandas"` when a pandas result is required:
+formats. By default, pandas DataFrame inputs (including pandas dictionaries) return a
+pandas DataFrame, while Polars, Dask, and other supported inputs return a Polars
+DataFrame. Use `output_format` to override the default:
 
 ```python
 pandas_features = extract_features(
@@ -51,15 +52,16 @@ pandas_features = extract_features(
 )
 ```
 
-The extraction boundary is Polars-first: Polars inputs stay in the Polars data path and
-default results are Polars. Feature calculators themselves receive NumPy arrays in the
-usual case, or temporary pandas Series for calculators that require pandas index semantics.
+The extraction boundary is Polars-first whenever the input is not pandas. Pandas inputs
+may use Polars adapters internally when possible, but preserve pandas output by default.
+Feature calculators themselves receive NumPy arrays in the usual case, or temporary
+pandas Series for calculators that require pandas index semantics.
 
 ## API compatibility
 
 | API | Polars support | Actual behavior |
 | --- | --- | --- |
-| `extract_features` | Native default | Polars input and Polars output by default; pandas output is opt-in. |
+| `extract_features` | Native default | Pandas input returns pandas; Polars and other supported input formats return Polars by default. `output_format` overrides this. |
 | `select_features` | Adapter only | Accepts a Polars feature table, converts it to pandas internally, and returns pandas. Targets remain pandas Series or NumPy arrays. |
 | `extract_relevant_features` | Adapter only | Uses pandas for imputation and feature selection and returns pandas. |
 | `FeatureAugmenter` | No Polars-native transformer | Keeps the original pandas/sklearn contract and requests pandas extraction output. |
@@ -76,7 +78,8 @@ when a Polars result is sufficient.
 This fork adds:
 
 - Polars input support for wide, long, and dictionary data formats.
-- Polars-first extraction with `output_format="pandas"` as the compatibility escape hatch.
+- Input-aware extraction output: pandas inputs return pandas, while Polars and other
+  supported inputs return Polars by default.
 - Fixes for integer overflow in arithmetic, change, energy, and entropy features.
 - Fixes for spectral kurtosis, `mean_n_absolute_max` boundary handling, comprehensive
   parameter generation, categorical-ID grouping, and NumPy target alignment.
