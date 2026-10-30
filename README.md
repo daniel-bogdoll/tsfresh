@@ -67,7 +67,7 @@ pandas Series for calculators that require pandas index semantics.
 | `FeatureAugmenter` | Adapter internally | Accepts Polars feature tables, uses the pandas/sklearn-compatible merge internally, and returns Polars for Polars input. |
 | `RelevantFeatureAugmenter` | Adapter internally | Uses the pandas feature-selection pipeline internally and returns Polars for Polars input. |
 | `impute`, `impute_dataframe_zero`, `impute_dataframe_range` | Native Polars path | Operate directly on Polars DataFrames and preserve pandas behavior for pandas DataFrames. |
-| `run_tsfresh` | No | The CLI keeps its existing pandas/CSV workflow. |
+| `run_tsfresh` | Polars-native | Reads and writes CSV with Polars and returns Polars extraction results. |
 
 Statistical feature-selection routines still use pandas internally where their dependencies
 require it, but public dataframe results preserve the requested format.

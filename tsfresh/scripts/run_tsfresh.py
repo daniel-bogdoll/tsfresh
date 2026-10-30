@@ -21,10 +21,11 @@ There are a few limitations though
 """
 
 import argparse
+import io
 import os
 import sys
 
-import pandas as pd
+import polars as pl
 
 from tsfresh import extract_features
 
@@ -35,13 +36,13 @@ def _preprocess(df):
     such that records are stored column-wise.
     """
 
-    df = df.stack()
-
-    df.index.rename(["id", "time"], inplace=True)  # .reset_index()
-    df.name = "value"
-    df = df.reset_index()
-
-    return df
+    return (
+        df.with_row_index("id")
+        .select("id", pl.concat_list(pl.exclude("id")).alias("value"))
+        .explode("value")
+        .with_columns(pl.int_range(0, pl.len()).over("id").alias("time"))
+        .select("id", "time", "value")
+    )
 
 
 def main(console_args=None):
@@ -118,7 +119,11 @@ def main(console_args=None):
 
     # Read in CSV file
     input_file_name = args.input_file_name
-    df = pd.read_csv(input_file_name, sep=r"\s+", header=header)
+    df = pl.read_csv(
+        input_file_name,
+        separator=" ",
+        has_header=args.csv_with_headers,
+    )
 
     if not args.csv_with_headers:
         df = _preprocess(df)
@@ -132,13 +137,16 @@ def main(console_args=None):
         output_format="pandas",
     )
 
-    # re-cast index from float to int
-    df_features.index = df_features.index.astype("int")
-
     # write to disk
     default_out_file_name = os.path.splitext(input_file_name)[0] + ".features.csv"
     output_file_name = args.output_file_name or default_out_file_name
-    df_features.to_csv(output_file_name)
+    output = io.StringIO()
+    df_features.with_row_index("__tsfresh_index").write_csv(output)
+    csv_contents = output.getvalue().replace(
+        "__tsfresh_index,", ",", 1
+    )
+    with open(output_file_name, "w") as output_file:
+        output_file.write(csv_contents)
 
 
 if __name__ == "__main__":
