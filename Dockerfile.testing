@@ -6,7 +6,6 @@ SHELL ["/bin/bash", "-c"]
 # These are required to build python from source
 RUN apt-get update && apt-get install -y \
     python3-pip \
-    curl \
     clang \
     git \
     build-essential \
@@ -26,7 +25,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 
-RUN curl https://pyenv.run | bash
+ARG PYENV_COMMIT=fdde91269b95bd8a61e9f8d11cba9a1e2de038ad
+RUN git clone --depth 1 https://github.com/pyenv/pyenv.git "$HOME/.pyenv" && \
+    test "$(git -C "$HOME/.pyenv" rev-parse HEAD)" = "$PYENV_COMMIT"
 
 # For interactive use (if any), this is an edge case.
 RUN echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc && \

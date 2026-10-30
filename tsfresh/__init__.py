@@ -12,7 +12,7 @@ At the top level we export the three most important submodules of tsfresh, which
 from importlib.metadata import version
 
 try:
-    __version__ = version("tsfresh")
+    __version__ = version("tsfresh-polars")
 except Exception:
     __version__ = "unknown"
 

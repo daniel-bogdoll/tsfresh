@@ -10,4 +10,4 @@
 from setuptools import setup
 
 if __name__ == "__main__":
-    setup(use_pyscaffold=True)
+    setup(version="0.22.0")

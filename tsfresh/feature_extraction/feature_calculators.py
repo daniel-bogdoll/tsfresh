@@ -99,6 +99,25 @@ def _roll(a, shift):
     return np.concatenate([a[-idx:], a[:-idx]])
 
 
+def _promote_integer_input(x):
+    """Avoid integer overflow before arithmetic, preserving floating input dtypes."""
+    if not isinstance(x, (np.ndarray, pd.Series)):
+        x = np.asarray(x)
+    if x.dtype.kind in "biu":
+        x = x.astype(np.float64)
+    return x
+
+
+def _get_differences(x):
+    """Compute signed differences without integer overflow or lost low bits."""
+    x = np.asarray(x)
+    if x.dtype.kind in "biu":
+        if x.dtype.itemsize >= 8:
+            return np.diff(x.astype(object)).astype(np.float64)
+        x = x.astype(np.float64)
+    return np.diff(x)
+
+
 def _get_length_sequences_where(x):
     """
     This method calculates the length of all sub-sequences where the array x is either True or 1.
@@ -558,8 +577,7 @@ def abs_energy(x):
     :return: the value of this feature
     :return type: float
     """
-    if not isinstance(x, (np.ndarray, pd.Series)):
-        x = np.asarray(x)
+    x = _promote_integer_input(x)
     return np.dot(x, x)
 
 
@@ -587,8 +605,7 @@ def cid_ce(x, normalize):
     :return: the value of this feature
     :return type: float
     """
-    if not isinstance(x, (np.ndarray, pd.Series)):
-        x = np.asarray(x)
+    x = _promote_integer_input(x)
     if normalize:
         s = np.std(x)
         if s != 0:
@@ -596,7 +613,7 @@ def cid_ce(x, normalize):
         else:
             return 0.0
 
-    x = np.diff(x)
+    x = _get_differences(x)
     return np.sqrt(np.dot(x, x))
 
 
@@ -617,7 +634,7 @@ def mean_abs_change(x):
     :return: the value of this feature
     :return type: float
     """
-    return np.mean(np.abs(np.diff(x)))
+    return np.mean(np.abs(_get_differences(x)))
 
 
 @set_property("fctype", "simple")
@@ -637,6 +654,8 @@ def mean_change(x):
     :return type: float
     """
     x = np.asarray(x)
+    if len(x) > 1 and x.dtype.kind in "biu":
+        return (int(x[-1]) - int(x[0])) / (len(x) - 1)
     return (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else np.nan
 
 
@@ -758,6 +777,8 @@ def skewness(x):
     """
     if not isinstance(x, pd.Series):
         x = pd.Series(x)
+    if len(x) >= 3 and not x.isna().any() and x.nunique() <= 1:
+        return 0.0
     return pd.Series.skew(x, skipna=False)
 
 
@@ -775,6 +796,8 @@ def kurtosis(x):
     """
     if not isinstance(x, pd.Series):
         x = pd.Series(x)
+    if len(x) >= 4 and not x.isna().any() and x.nunique() <= 1:
+        return 0.0
     return pd.Series.kurtosis(x)
 
 
@@ -789,6 +812,7 @@ def root_mean_square(x):
     :return: the value of this feature
     :return type: float
     """
+    x = _promote_integer_input(x)
     return np.sqrt(np.mean(np.square(x))) if len(x) > 0 else np.nan
 
 
@@ -806,7 +830,7 @@ def absolute_sum_of_changes(x):
     :return: the value of this feature
     :return type: float
     """
-    return np.sum(np.abs(np.diff(x)))
+    return np.sum(np.abs(_get_differences(x)))
 
 
 @set_property("fctype", "simple")
@@ -1214,7 +1238,7 @@ def fft_aggregated(x, param):
             get_moment(y, 4)
             - 4 * centroid * get_moment(y, 3)
             + 6 * get_moment(y, 2) * centroid**2
-            - 3 * centroid
+            - 3 * centroid**4
         ) / get_variance(y) ** 2
 
     calculation = {
@@ -1533,7 +1557,7 @@ def change_quantiles(x, ql, qh, isabs, f_agg):
     if ql >= qh:
         return 0.0
 
-    div = np.diff(x)
+    div = _get_differences(x)
     if isabs:
         div = np.abs(div)
     # All values that originate from the corridor between the quantiles ql and qh will have the category 0,
@@ -1659,7 +1683,7 @@ def mean_n_absolute_max(x, number_of_maxima):
 
     n_absolute_maximum_values = np.sort(np.absolute(x))[-number_of_maxima:]
 
-    return np.mean(n_absolute_maximum_values) if len(x) > number_of_maxima else np.nan
+    return np.mean(n_absolute_maximum_values) if len(x) >= number_of_maxima else np.nan
 
 
 @set_property("fctype", "simple")
@@ -1694,6 +1718,18 @@ def binned_entropy(x, max_bins):
     return -np.sum(probs * np.log(probs))
 
 
+def _prepare_entropy_input(x):
+    """Preserve signed template distances without overflowing integer inputs."""
+    if x.dtype.kind not in "biu":
+        return x
+    use_object = (
+        x.size
+        and x.dtype.itemsize >= 8
+        and (int(x.min()) < -(2**52) or int(x.max()) > 2**52)
+    )
+    return np.asarray(x).astype(object if use_object else np.float64)
+
+
 # todo - include latex formula
 # todo - check if vectorizable
 @set_property("high_comp_cost", True)
@@ -1723,6 +1759,7 @@ def sample_entropy(x):
     tolerance = 0.2 * np.std(
         x
     )  # 0.2 is a common value for r, according to wikipedia...
+    x = _prepare_entropy_input(x)
 
     # Split time series and save all templates of length m
     # Basically we turn [1, 2, 3, 4] into [1, 2], [2, 3], [3, 4]
@@ -1789,6 +1826,7 @@ def approximate_entropy(x, m, r):
 
     N = x.size
     r *= np.std(x)
+    x = _prepare_entropy_input(x)
     if r < 0:
         raise ValueError("Parameter r must be positive.")
     if N <= m + 1:
@@ -2244,6 +2282,7 @@ def energy_ratio_by_chunks(x, param):
     :return: the feature values
     :return type: List[Tuple[str, float]]
     """
+    x = _promote_integer_input(x)
     res_data = []
     res_index = []
     full_series_energy = np.sum(x**2)

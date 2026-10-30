@@ -159,6 +159,10 @@ def calculate_relevance_table(
     :rtype: pandas.DataFrame
     """
 
+    if isinstance(y, np.ndarray):
+        assert len(X) == len(y), "X and y must contain the same number of samples."
+        y = pd.Series(y, index=X.index)
+
     # Make sure X and y both have the exact same indices
     y = y.sort_index()
     X = X.sort_index()
