@@ -4,13 +4,21 @@ Changelog
 
 tsfresh uses `Semantic Versioning <http://semver.org/>`_
 
-Unreleased
-==========
-- Added Features
-    - Add native eager Polars DataFrame input support for feature extraction adapters (wide, long and dict formats),
-      while keeping Polars optional and preserving pandas output.
-- Bugfixes/Typos/Documentation:
-    - Document Polars input formats, LazyFrame limitation and optional installation extra.
+Version 0.22.0
+==============
+- Forked from tsfresh 0.21.2 and released as ``tsfresh-polars``.
+- Added native eager Polars DataFrame input support for feature extraction adapters (wide, long and dict
+  formats), while keeping Polars optional and preserving pandas output.
+- Fixed integer overflow and signed-difference handling in arithmetic, change, energy, and entropy features.
+- Fixed the fourth central moment used by spectral kurtosis.
+- Fixed ``mean_n_absolute_max`` when the series has exactly the requested number of samples.
+- Fixed missing ``mean_n_absolute_max`` configurations in ``ComprehensiveFCParameters``.
+- Fixed phantom feature rows from unused categorical identifiers.
+- Fixed NumPy target alignment in feature selection for non-default DataFrame indexes.
+- Updated the README and package metadata to identify the project as ``tsfresh-polars``.
+- Documented Polars input formats, LazyFrame limitation, and optional installation extra.
+- Hardened build and test dependencies: removed legacy PyScaffold build requirements, require
+  patched setuptools, require a secure Requests baseline, and pin the pyenv test-image source.
 
 Version 0.21.2
 ==============

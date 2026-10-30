@@ -4,7 +4,11 @@
 
 -----------------
 
-# tsfresh
+# tsfresh-polars
+
+This is **tsfresh-polars**, a maintained fork of [tsfresh](https://github.com/blue-yonder/tsfresh)
+with native eager Polars input support while preserving the familiar `tsfresh` Python API and pandas
+output. Install it from PyPI with `pip install tsfresh-polars`.
 
 [![Documentation Status](https://readthedocs.org/projects/tsfresh/badge/?version=latest)](https://tsfresh.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://github.com/daniel-bogdoll/tsfresh/workflows/Test%20Default%20Branch/badge.svg)](https://github.com/daniel-bogdoll/tsfresh/actions)
@@ -13,7 +17,7 @@
 [![Binder](https://mybinder.org/badge.svg)](https://mybinder.org/v2/gh/daniel-bogdoll/tsfresh/main?filepath=notebooks)
 [![Downloads](https://pepy.tech/badge/tsfresh)](https://pepy.tech/project/tsfresh)
 
-This repository contains the *TSFRESH* python package. The abbreviation stands for
+This repository contains the *tsfresh-polars* Python package. The abbreviation stands for
 
 *"Time Series Feature extraction based on scalable hypothesis tests"*.
 
@@ -134,6 +138,13 @@ which is described in the following open access paper:
 5. it is compatible with sklearn, pandas and numpy
 6. it allows anyone to easily add their favorite features
 7. it both runs on your local machine or even on a cluster
+
+## Differences from the original tsfresh
+
+Compared with the original tsfresh repository, this fork adds native eager Polars support for wide,
+long, and dictionary input formats, and fixes integer overflow in arithmetic, change, energy, and
+entropy features; spectral kurtosis; `mean_n_absolute_max` boundary handling; comprehensive
+parameter generation; categorical-ID grouping; and NumPy target alignment in feature selection.
 
 ## Next steps
 

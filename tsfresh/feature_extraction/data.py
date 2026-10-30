@@ -77,7 +77,9 @@ def _is_default_range_index(df):
 
 
 def _should_use_polars_backend_for_pandas_dataframe(df):
-    return _is_default_range_index(df)
+    return _is_default_range_index(df) and all(
+        isinstance(column, str) for column in df.columns
+    )
 
 
 def _convert_pandas_to_polars_dataframe(df):
@@ -298,7 +300,7 @@ class WideTsFrameAdapter(PartitionedTsData):
             _check_nan(df, column_sort)
 
         self.column_sort = column_sort
-        self.df_grouped = df.groupby(column_id)
+        self.df_grouped = df.groupby(column_id, observed=True)
 
         super().__init__(df, column_id)
 
@@ -361,7 +363,7 @@ class LongTsFrameAdapter(PartitionedTsData):
             _check_nan(df, column_sort)
 
         self.column_sort = column_sort
-        self.df_grouped = df.groupby([column_id, column_kind])
+        self.df_grouped = df.groupby([column_id, column_kind], observed=True)
 
         super().__init__(df, column_id)
 
@@ -403,12 +405,12 @@ class TsDictAdapter(PartitionedTsData):
                 _check_nan(df, column_sort)
 
             self.grouped_dict = {
-                key: df.sort_values([column_sort]).groupby(column_id)
+                key: df.sort_values([column_sort]).groupby(column_id, observed=True)
                 for key, df in ts_dict.items()
             }
         else:
             self.grouped_dict = {
-                key: df.groupby(column_id) for key, df in ts_dict.items()
+                key: df.groupby(column_id, observed=True) for key, df in ts_dict.items()
             }
 
         super().__init__(df, column_id)
