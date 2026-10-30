@@ -62,16 +62,15 @@ pandas Series for calculators that require pandas index semantics.
 | API | Polars support | Actual behavior |
 | --- | --- | --- |
 | `extract_features` | Native default | Pandas input returns pandas; Polars and other supported input formats return Polars by default. `output_format` overrides this. |
-| `select_features` | Adapter only | Accepts a Polars feature table, converts it to pandas internally, and returns pandas. Targets remain pandas Series or NumPy arrays. |
-| `extract_relevant_features` | Adapter only | Uses pandas for imputation and feature selection and returns pandas. |
-| `FeatureAugmenter` | No Polars-native transformer | Keeps the original pandas/sklearn contract and requests pandas extraction output. |
-| `RelevantFeatureAugmenter` | No Polars-native transformer | Uses the pandas feature-selection pipeline. |
-| `impute`, `impute_dataframe_zero`, `impute_dataframe_range` | No | These utilities operate on pandas DataFrames. |
+| `select_features` | Adapter internally | Accepts Polars feature tables, uses pandas for statistical tests internally, and returns Polars. Pandas inputs return pandas; other array-like inputs return Polars. |
+| `extract_relevant_features` | Adapter internally | Uses pandas for imputation and feature selection internally, then returns the format selected by the input feature table or time-series container. |
+| `FeatureAugmenter` | Adapter internally | Accepts Polars feature tables, uses the pandas/sklearn-compatible merge internally, and returns Polars for Polars input. |
+| `RelevantFeatureAugmenter` | Adapter internally | Uses the pandas feature-selection pipeline internally and returns Polars for Polars input. |
+| `impute`, `impute_dataframe_zero`, `impute_dataframe_range` | Native Polars path | Operate directly on Polars DataFrames and preserve pandas behavior for pandas DataFrames. |
 | `run_tsfresh` | No | The CLI keeps its existing pandas/CSV workflow. |
 
-There are currently no separate Polars-native equivalents for the pandas-dependent APIs
-listed above. Convert explicitly at those boundaries, or use `extract_features` directly
-when a Polars result is sufficient.
+Statistical feature-selection routines still use pandas internally where their dependencies
+require it, but public dataframe results preserve the requested format.
 
 ## What differs from upstream tsfresh
 

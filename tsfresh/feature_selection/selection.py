@@ -14,6 +14,41 @@ from tsfresh.feature_selection.relevance import calculate_relevance_table
 from tsfresh.utilities.dataframe_functions import check_for_nans_in_columns
 
 
+def _is_polars_dataframe(value):
+    value_type = type(value)
+    return (
+        value_type.__name__ == "DataFrame"
+        and value_type.__module__.startswith("polars")
+    )
+
+
+def _to_pandas_feature_table(X):
+    if _is_polars_dataframe(X):
+        columns = X.to_dict(as_series=False)
+        id_column = X.columns[0]
+        index = columns.pop(id_column)
+        result = pd.DataFrame(columns, index=index)
+        result.index.name = id_column
+        return result, "polars"
+    if isinstance(X, pd.DataFrame):
+        return X, "pandas"
+    return pd.DataFrame(X.copy()), "other"
+
+
+def _from_pandas_feature_table(X, output_format):
+    if output_format == "pandas":
+        return X
+
+    import polars as pl
+
+    if output_format == "polars":
+        return pl.DataFrame(
+            {str(X.index.name or "id"): X.index.to_list(), **X.to_dict(orient="list")}
+        )
+
+    return pl.from_pandas(X.reset_index(drop=True), include_index=False)
+
+
 def select_features(
     X,
     y,
@@ -145,12 +180,10 @@ def select_features(
     :raises: ``ValueError`` when the target vector does not fit to the feature matrix
              or `ml_task` is not one of `'auto'`, `'classification'` or `'regression'`.
     """
-    if not isinstance(X, pd.DataFrame) and hasattr(X, "to_dict"):
-        columns = X.to_dict(as_series=False)
-        id_column = X.columns[0]
-        index = columns.pop(id_column)
-        X = pd.DataFrame(columns, index=index)
-    assert isinstance(X, pd.DataFrame), "Please pass features in X as pandas.DataFrame."
+    X, output_format = _to_pandas_feature_table(X)
+    assert isinstance(X, pd.DataFrame), (
+        "Please pass features in X as pandas.DataFrame or polars.DataFrame."
+    )
     check_for_nans_in_columns(X)
     assert isinstance(y, (pd.Series, np.ndarray)), (
         "The type of target vector y must be one of: " "pandas.Series, numpy.ndarray"
@@ -183,4 +216,7 @@ def select_features(
 
     relevant_features = relevance_table[relevance_table.relevant].feature
 
-    return X.loc[:, relevant_features]
+    return _from_pandas_feature_table(
+        X.loc[:, relevant_features],
+        output_format,
+    )

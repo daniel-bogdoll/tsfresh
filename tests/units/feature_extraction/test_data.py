@@ -306,9 +306,12 @@ class DataAdapterTestCase(DataTestCase):
         dic_result = {str(x[0]) + "_" + str(x[1]): x[2] for x in result}
         dic_expected = {str(x[0]) + "_" + str(x[1]): x[2] for x in expected}
         for k in dic_result.keys():
-            pd.testing.assert_series_equal(
-                dic_result[k], dic_expected[k], check_names=False
-            )
+            if hasattr(dic_result[k], "to_list"):
+                self.assertEqual(dic_result[k].to_list(), dic_expected[k].tolist())
+            else:
+                pd.testing.assert_series_equal(
+                    dic_result[k], dic_expected[k], check_names=False
+                )
 
     def test_simple_data_sample_two_timeseries(self):
         df = pd.DataFrame(
@@ -671,7 +674,7 @@ class PivotListTestCase(TestCase):
         mock_ts_data = Mock()
         mock_ts_data.df_id_type = str
 
-        return_df = PartitionedTsData.pivot(mock_ts_data, [])
+        return_df = PartitionedTsData.pivot(mock_ts_data, [], output_format="pandas")
 
         self.assertEqual(len(return_df), 0)
         self.assertEqual(len(return_df.index), 0)
@@ -688,7 +691,9 @@ class PivotListTestCase(TestCase):
             ("A", "c", 4),
             ("X", "Y", 5),
         ]
-        return_df = PartitionedTsData.pivot(mock_ts_data, input_list)
+        return_df = PartitionedTsData.pivot(
+            mock_ts_data, input_list, output_format="pandas"
+        )
 
         self.assertEqual(len(return_df), 3)
         self.assertEqual(set(return_df.index), {"a", "A", "X"})
@@ -709,7 +714,9 @@ class PivotListTestCase(TestCase):
             for j in range(100):
                 input_list.append((i, j, i * j))
 
-        return_df = PartitionedTsData.pivot(mock_ts_data, input_list)
+        return_df = PartitionedTsData.pivot(
+            mock_ts_data, input_list, output_format="pandas"
+        )
 
         self.assertEqual(len(return_df), 100)
         self.assertEqual(len(return_df.columns), 100)

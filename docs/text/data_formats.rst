@@ -213,6 +213,8 @@ Polars Input Notes
 * ``extract_features`` returns a :class:`polars.DataFrame` by default for Polars input.
   Pandas input returns a :class:`pandas.DataFrame` by default. Pass ``output_format`` to
   explicitly select either result type.
+* Public feature-selection, convenience, transformer, and imputation APIs preserve
+  Polars inputs and use pandas only as an internal compatibility boundary where required.
 
 Output Format
 -------------

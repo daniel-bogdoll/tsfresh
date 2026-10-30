@@ -12,6 +12,14 @@ from tsfresh.utilities.dataframe_functions import (
 )
 
 
+def _is_polars_dataframe(value):
+    value_type = type(value)
+    return (
+        value_type.__name__ == "DataFrame"
+        and value_type.__module__.startswith("polars")
+    )
+
+
 class PerColumnImputer(BaseEstimator, TransformerMixin):
     """
     Sklearn-compatible estimator, for column-wise imputing DataFrames by replacing all ``NaNs`` and ``infs``
@@ -67,10 +75,37 @@ class PerColumnImputer(BaseEstimator, TransformerMixin):
         :return: the estimator with the computed min, max and median values
         :rtype: Imputer
         """
-        if not isinstance(X, pd.DataFrame):
+        if _is_polars_dataframe(X):
+            X = X
+        elif not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
 
-        col_to_max, col_to_min, col_to_median = get_range_values_per_column(X)
+        if _is_polars_dataframe(X):
+            import polars as pl
+
+            stats = X.select(
+                [
+                    pl.col(column).filter(pl.col(column).is_finite()).max().alias(column)
+                    for column in X.columns
+                ]
+                + [
+                    pl.col(column).filter(pl.col(column).is_finite()).min().alias(column)
+                    for column in X.columns
+                ]
+                + [
+                    pl.col(column).filter(pl.col(column).is_finite()).median().alias(column)
+                    for column in X.columns
+                ]
+            ).row(0)
+            size = len(X.columns)
+            col_to_max = dict(zip(X.columns, stats[:size]))
+            col_to_min = dict(zip(X.columns, stats[size : 2 * size]))
+            col_to_median = dict(zip(X.columns, stats[2 * size :]))
+            col_to_max = {key: 0.0 if value is None else value for key, value in col_to_max.items()}
+            col_to_min = {key: 0.0 if value is None else value for key, value in col_to_min.items()}
+            col_to_median = {key: 0.0 if value is None else value for key, value in col_to_median.items()}
+        else:
+            col_to_max, col_to_min, col_to_median = get_range_values_per_column(X)
 
         if self.col_to_NINF_repl_preset is not None:
             if not set(X.columns) >= set(self.col_to_NINF_repl_preset.keys()):
@@ -115,7 +150,8 @@ class PerColumnImputer(BaseEstimator, TransformerMixin):
          This can happen if the transformer was not fitted.
         """
 
-        if not isinstance(X, pd.DataFrame):
+        polars_input = _is_polars_dataframe(X)
+        if not isinstance(X, pd.DataFrame) and not polars_input:
             X = pd.DataFrame(X)
 
         if (

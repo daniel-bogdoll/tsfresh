@@ -8,7 +8,12 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from tsfresh import defaults
 from tsfresh.feature_extraction.settings import from_columns
-from tsfresh.transformers.feature_augmenter import FeatureAugmenter
+from tsfresh.transformers.feature_augmenter import (
+    FeatureAugmenter,
+    _is_polars_dataframe,
+    _pandas_to_polars_indexed,
+    _polars_to_pandas_indexed,
+)
 from tsfresh.transformers.feature_selector import FeatureSelector
 from tsfresh.utilities.dataframe_functions import (
     get_range_values_per_column,
@@ -298,6 +303,8 @@ class RelevantFeatureAugmenter(BaseEstimator, TransformerMixin):
         :return: the fitted estimator with the information, which features are relevant.
         :rtype: RelevantFeatureAugmenter
         """
+        if _is_polars_dataframe(X):
+            X = _polars_to_pandas_indexed(X)
         self._fit_and_augment(X, y)
         return self
 
@@ -327,6 +334,10 @@ class RelevantFeatureAugmenter(BaseEstimator, TransformerMixin):
 
         if self.feature_selector.relevant_features is None:
             raise RuntimeError("You have to call fit before calling transform.")
+
+        polars_input = _is_polars_dataframe(X)
+        if polars_input:
+            X = _polars_to_pandas_indexed(X)
 
         self.feature_extractor.set_timeseries_container(self.timeseries_container)
 
@@ -367,11 +378,13 @@ class RelevantFeatureAugmenter(BaseEstimator, TransformerMixin):
         X_augmented = relevant_feature_extractor.transform(X)
 
         if self.filter_only_tsfresh_features:
-            return X_augmented.copy().loc[
+            result = X_augmented.copy().loc[
                 :, self.feature_selector.relevant_features + X.columns.tolist()
             ]
         else:
-            return X_augmented.copy().loc[:, self.feature_selector.relevant_features]
+            result = X_augmented.copy().loc[:, self.feature_selector.relevant_features]
+
+        return _pandas_to_polars_indexed(result) if polars_input else result
 
     def fit_transform(self, X, y):
         """
@@ -389,6 +402,10 @@ class RelevantFeatureAugmenter(BaseEstimator, TransformerMixin):
             deleted irrelevant information (only if filter_only_tsfresh_features is False).
         :rtype: pandas.DataFrame
         """
+        polars_input = _is_polars_dataframe(X)
+        if polars_input:
+            X = _polars_to_pandas_indexed(X)
+
         X_augmented = self._fit_and_augment(X, y)
 
         selected_features = X_augmented.copy().loc[
@@ -400,7 +417,11 @@ class RelevantFeatureAugmenter(BaseEstimator, TransformerMixin):
                 selected_features, X, left_index=True, right_index=True, how="left"
             )
 
-        return selected_features
+        return (
+            _pandas_to_polars_indexed(selected_features)
+            if polars_input
+            else selected_features
+        )
 
     def _fit_and_augment(self, X, y):
         """
