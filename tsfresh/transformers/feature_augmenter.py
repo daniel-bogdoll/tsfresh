@@ -225,6 +225,7 @@ class FeatureAugmenter(BaseEstimator, TransformerMixin):
             profile=self.profile,
             profiling_filename=self.profiling_filename,
             profiling_sorting=self.profiling_sorting,
+            output_format="pandas",
         )
 
         X = pd.merge(

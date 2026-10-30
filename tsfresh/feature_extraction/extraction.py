@@ -13,7 +13,7 @@ import pandas as pd
 
 from tsfresh import defaults
 from tsfresh.feature_extraction import feature_calculators
-from tsfresh.feature_extraction.data import to_tsdata
+from tsfresh.feature_extraction.data import _import_polars, _is_polars_series, to_tsdata
 from tsfresh.feature_extraction.settings import ComprehensiveFCParameters
 from tsfresh.utilities import profiling
 from tsfresh.utilities.distribution import (
@@ -45,6 +45,7 @@ def extract_features(
     profiling_sorting=defaults.PROFILING_SORTING,
     distributor=None,
     pivot=True,
+    output_format="polars",
 ):
     """
     Extract features from
@@ -56,7 +57,8 @@ def extract_features(
     * a dictionary of :class:`pandas.DataFrame` or eager :class:`polars.DataFrame` objects
       each containing one type of time series
 
-    In both cases a :class:`pandas.DataFrame` with the calculated features will be returned.
+    By default a :class:`polars.DataFrame` with the calculated features will be returned.
+    Pass ``output_format="pandas"`` for the legacy pandas result.
 
     For a list of all the calculated time series features, please see the
     :class:`~tsfresh.feature_extraction.settings.ComprehensiveFCParameters` class,
@@ -101,6 +103,9 @@ def extract_features(
     :param column_value: The name for the column keeping the value itself. Please see :ref:`data-formats-label`.
     :type column_value: str
 
+    :param output_format: Output dataframe format, either ``"polars"`` (default) or ``"pandas"``.
+    :type output_format: str
+
     :param n_jobs: The number of processes to use for parallelization. If zero, no parallelization is used.
     :type n_jobs: int
 
@@ -140,7 +145,7 @@ def extract_features(
     :type distributor: class
 
     :return: The (maybe imputed) DataFrame containing extracted features.
-    :rtype: pandas.DataFrame
+    :rtype: polars.DataFrame or pandas.DataFrame
     """
 
     # Always use the standardized way of storing the data.
@@ -176,11 +181,26 @@ def extract_features(
             kind_to_fc_parameters=kind_to_fc_parameters,
             distributor=distributor,
             pivot=pivot,
+            output_format=output_format,
         )
 
         # Impute the result if requested
         if impute_function is not None:
-            impute_function(result)
+            if output_format == "polars":
+                pl = _import_polars()
+                impute_input = pd.DataFrame(
+                    result.drop(str(column_id)).to_dict(as_series=False), dtype=float
+                )
+                impute_input.index = result[str(column_id)].to_list()
+                impute_function(impute_input)
+                result = pl.DataFrame(
+                    {
+                        str(column_id): impute_input.index.tolist(),
+                        **impute_input.to_dict(orient="list"),
+                    }
+                )
+            else:
+                impute_function(result)
 
     # Turn off profiling if it was turned on
     if profile:
@@ -205,6 +225,7 @@ def _do_extraction(
     show_warnings,
     distributor,
     pivot,
+    output_format,
 ):
     """
     Wrapper around the _do_extraction_on_chunk, which calls it on all chunks in the data frame.
@@ -302,7 +323,7 @@ def _do_extraction(
     if not pivot:
         return result
 
-    return_df = data.pivot(result)
+    return_df = data.pivot(result, output_format=output_format)
     return return_df
 
 
@@ -346,20 +367,23 @@ def _do_extraction_on_chunk(
             # If the function uses the index, pass is at as a pandas Series.
             # Otherwise, convert to numpy array
             if getattr(func, "input", None) == "pd.Series":
+                if _is_polars_series(data):
+                    x = pd.Series(data.to_list(), name=data.name)
+                else:
+                    x = data
                 # If it has a required index type, check that the data has the right index type.
                 index_type = getattr(func, "index_type", None)
                 if index_type is not None:
                     try:
-                        assert isinstance(data.index, index_type)
+                        assert isinstance(x.index, index_type)
                     except AssertionError:
                         warnings.warn(
                             "{} requires the data to have a index of type {}. Results will "
                             "not be calculated".format(f_or_function_name, index_type)
                         )
                         continue
-                x = data
             else:
-                x = data.values
+                x = data.to_numpy() if _is_polars_series(data) else data.values
 
             if getattr(func, "fctype", None) == "combiner":
                 result = func(x, param=parameter_list)

@@ -7,8 +7,9 @@
 # tsfresh-polars
 
 This is **tsfresh-polars**, a maintained fork of [tsfresh](https://github.com/blue-yonder/tsfresh)
-with native eager Polars input support while preserving the familiar `tsfresh` Python API and pandas
-output. Install it from PyPI with `pip install tsfresh-polars`.
+with native eager Polars input, processing, and output by default while preserving the familiar
+`tsfresh` Python API. Install it from PyPI with `pip install tsfresh-polars`. Use
+`output_format="pandas"` when legacy pandas output is required.
 
 [![Documentation Status](https://readthedocs.org/projects/tsfresh/badge/?version=latest)](https://tsfresh.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://github.com/daniel-bogdoll/tsfresh/workflows/Test%20Default%20Branch/badge.svg)](https://github.com/daniel-bogdoll/tsfresh/actions)

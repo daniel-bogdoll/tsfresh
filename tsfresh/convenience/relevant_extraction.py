@@ -196,6 +196,7 @@ def extract_relevant_features(
         column_value=column_value,
         distributor=distributor,
         impute_function=impute,
+        output_format="pandas",
     )
 
     X_sel = select_features(

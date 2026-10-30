@@ -167,9 +167,10 @@ class PartitionedTsData(Iterable[Timeseries], Sized, TsData):
     """
 
     def __init__(self, df, column_id):
+        self.column_id = column_id
         self.df_id_type = df[column_id].dtype
 
-    def pivot(self, results):
+    def pivot(self, results, output_format="polars"):
         """
         Helper function to turn an iterable of tuples with three entries into a dataframe.
 
@@ -183,6 +184,9 @@ class PartitionedTsData(Iterable[Timeseries], Sized, TsData):
 
         This function is called in the end of the extract_features call.
         """
+        if output_format not in {"polars", "pandas"}:
+            raise ValueError("output_format must be either 'polars' or 'pandas'")
+
         return_df_dict = defaultdict(dict)
         for chunk_id, variable, value in results:
             # we turn it into a nested mapping `column -> index -> value`
@@ -196,15 +200,35 @@ class PartitionedTsData(Iterable[Timeseries], Sized, TsData):
         # the rest is {index -> value} which will be turned into a
         # column with index.
         # All index will be aligned.
-        return_df = pd.DataFrame(return_df_dict, dtype=float)
+        if output_format == "pandas":
+            return_df = pd.DataFrame(return_df_dict, dtype=float)
 
-        # copy the type of the index
-        return_df.index = return_df.index.astype(self.df_id_type)
+            # copy the type of the index
+            return_df.index = return_df.index.astype(self.df_id_type)
 
-        # Sort by index to be backward compatible
-        return_df = return_df.sort_index()
+            # Sort by index to be backward compatible
+            return_df = return_df.sort_index()
+            return return_df
 
-        return return_df
+        pl = _import_polars()
+        if pl is None:
+            raise ImportError(
+                "Polars is required for output_format='polars'. "
+                "Install it with `pip install tsfresh-polars[polars]`."
+            )
+
+        ids = set()
+        for values in return_df_dict.values():
+            ids.update(values)
+        try:
+            ids = sorted(ids)
+        except TypeError:
+            ids = list(ids)
+
+        result = {str(self.column_id): ids}
+        for variable, values in return_df_dict.items():
+            result[variable] = [values.get(identifier) for identifier in ids]
+        return pl.DataFrame(result).sort(str(self.column_id))
 
 
 def _check_colname(*columns):
@@ -466,9 +490,7 @@ class PolarsWideTsFrameAdapter(PartitionedTsData):
                 yield Timeseries(
                     group_name,
                     kind,
-                    pd.Series(
-                        group.get_column(kind).to_list(), index=group_index, name=kind
-                    ),
+                    group.get_column(kind),
                 )
 
 
@@ -519,11 +541,7 @@ class PolarsLongTsFrameAdapter(PartitionedTsData):
             yield Timeseries(
                 group_key[0],
                 str(group_key[1]),
-                pd.Series(
-                    group.get_column(self.column_value).to_list(),
-                    index=group_index,
-                    name=self.column_value,
-                ),
+                group.get_column(self.column_value),
             )
 
 
@@ -564,11 +582,7 @@ class PolarsTsDictAdapter(PartitionedTsData):
                 yield Timeseries(
                     ts_id,
                     str(kind),
-                    pd.Series(
-                        group.get_column(self.column_value).to_list(),
-                        index=group.get_column(self.row_number_column).to_list(),
-                        name=self.column_value,
-                    ),
+                    group.get_column(self.column_value),
                 )
 
     def __len__(self):
@@ -663,7 +677,7 @@ class DaskTsAdapter(TsData):
         )
         return self.df.apply(bound_function, meta=meta)
 
-    def pivot(self, results):
+    def pivot(self, results, output_format="pandas"):
         """
         The extract features function for dask returns a
         dataframe of [id, variable, value].
