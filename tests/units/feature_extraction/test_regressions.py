@@ -71,4 +71,4 @@ def test_categorical_ids_do_not_create_unused_rows():
         n_jobs=0,
         disable_progressbar=True,
     )
-    assert list(result.index) == [1, 3]
+    assert result.get_column("id").to_list() == [1, 3]

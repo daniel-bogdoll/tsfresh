@@ -145,6 +145,11 @@ def select_features(
     :raises: ``ValueError`` when the target vector does not fit to the feature matrix
              or `ml_task` is not one of `'auto'`, `'classification'` or `'regression'`.
     """
+    if not isinstance(X, pd.DataFrame) and hasattr(X, "to_dict"):
+        columns = X.to_dict(as_series=False)
+        id_column = X.columns[0]
+        index = columns.pop(id_column)
+        X = pd.DataFrame(columns, index=index)
     assert isinstance(X, pd.DataFrame), "Please pass features in X as pandas.DataFrame."
     check_for_nans_in_columns(X)
     assert isinstance(y, (pd.Series, np.ndarray)), (

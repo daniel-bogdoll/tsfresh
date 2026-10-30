@@ -8,7 +8,8 @@ Version 0.22.0
 ==============
 - Forked from tsfresh 0.21.2 and released as ``tsfresh-polars``.
 - Added native eager Polars DataFrame input support for feature extraction adapters (wide, long and dict
-  formats), while keeping Polars optional and preserving pandas output.
+  formats), with Polars input, processing, and output as the default. Legacy pandas output remains available
+  with ``output_format="pandas"``.
 - Fixed integer overflow and signed-difference handling in arithmetic, change, energy, and entropy features.
 - Fixed the fourth central moment used by spectral kurtosis.
 - Fixed ``mean_n_absolute_max`` when the series has exactly the requested number of samples.

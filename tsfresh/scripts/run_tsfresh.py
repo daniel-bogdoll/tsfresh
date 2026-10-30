@@ -129,6 +129,7 @@ def main(console_args=None):
         column_sort=column_sort,
         column_value=column_value,
         column_id=column_id,
+        output_format="pandas",
     )
 
     # re-cast index from float to int

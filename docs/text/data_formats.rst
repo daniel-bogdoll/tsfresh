@@ -209,7 +209,8 @@ Polars Input Notes
 
 * tsfresh accepts eager :class:`polars.DataFrame` input for wide, long and dictionary-based formats.
 * :class:`polars.LazyFrame` is not supported directly. Call ``collect()`` before passing data to tsfresh.
-* ``extract_features`` keeps its return type unchanged and still returns a :class:`pandas.DataFrame`.
+* ``extract_features`` returns a :class:`polars.DataFrame` by default. Pass
+  ``output_format="pandas"`` for the legacy :class:`pandas.DataFrame` result.
 
 Output Format
 -------------
